@@ -47,11 +47,9 @@ def coordinates2d(command):
 def data(masterfilepath, fast_size):
     masterfile = h5py.File(masterfilepath, 'r')
     dataset = masterfile[datapath]
-    mask_full = np.tile(mask, fast_size)
-    print('mask_full shape: {}'.format(mask_full.shape))
-    # data = [np.multiply(mask_full, dataset[key][:]) for key in dataset]
+    full_mask = np.tile(mask, (fast_size, 1, 1))
     data = []
     for key in dataset:
-        print('dataset shape: {}'.format(dataset[key].shape))
-        data.append(dataset[key][:])
+        try: data.append(np.multiply(full_mask, dataset[key][:]))
+        except KeyError: continue
     return np.concatenate(data)

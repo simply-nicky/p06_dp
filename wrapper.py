@@ -80,11 +80,11 @@ class Scan(Measurement, metaclass=ABCMeta):
 
 class StepScan1D(Scan):
     mode = 'scan'
-    prefix, scan_num, fast_size, fast_crds = None, None, 1, None
+    prefix, scan_num, fast_size, fast_crds = None, None, None, None
 
     def __init__(self, prefix, scan_num):
         self.prefix, self.scan_num = prefix, scan_num
-        self.slow_crds, self.slow_size = utils.coordinates(self.command)
+        self.fast_crds, self.fast_size = utils.coordinates(self.command)
 
 class StepScan2D(Scan):
     mode = 'scan'
