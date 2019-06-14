@@ -24,7 +24,7 @@ class Measurement(metaclass=ABCMeta):
     def command(self):
         command = utils.scan_command(self.nxsfilepath)
         if type(command) == np.ndarray:
-            command = str(command)[3:-3]
+            command = str(command)[2:-2]
         return command
 
     @property
