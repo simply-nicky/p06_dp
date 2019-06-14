@@ -36,13 +36,13 @@ def get_attributes(command):
 
 def coordinates(command):
     start, stop, steps = get_attributes(command)
-    return np.linspace(start, stop, steps + 1), steps + 1
+    return np.linspace(start, stop, int(steps) + 1), int(steps) + 1
 
 def coordinates2d(command):
     start0, stop0, steps0, start1, stop1, steps1 = get_attributes(command)
-    fast_crds = np.linspace(start0, stop0, steps0 + 1, endpoint=True)
-    slow_crds = np.linspace(start1, stop1, steps1 + 1, endpoint=True)
-    return fast_crds, steps0 + 1, slow_crds, steps1 + 1
+    fast_crds = np.linspace(start0, stop0, int(steps0) + 1, endpoint=True)
+    slow_crds = np.linspace(start1, stop1, int(steps1) + 1, endpoint=True)
+    return fast_crds, int(steps0) + 1, slow_crds, int(steps1) + 1
 
 def data(masterfilepath, fast_size):
     masterfile = h5py.File(masterfilepath, 'r')
