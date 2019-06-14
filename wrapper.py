@@ -29,7 +29,7 @@ class Measurement(metaclass=ABCMeta):
 
     @property
     def masterfilepath(self):
-        return os.path.join(self.path, utils.masterfilepath.format(self.scan_num))
+        return os.path.join(self.path, utils.masterfilepath[self.mode].format(self.scan_num))
 
     @property
     def energy(self):
