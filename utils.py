@@ -50,6 +50,8 @@ def data(masterfilepath, fast_size):
     full_mask = np.tile(mask, (fast_size, 1, 1))
     data = []
     for key in dataset:
-        try: data.append(np.multiply(full_mask, dataset[key][:]))
+        try:
+            data.append(np.multiply(full_mask, dataset[key][:]))
+            print("data shape: {}".format(dataset[key].shape))
         except KeyError: continue
     return np.stack(data)
