@@ -1,4 +1,4 @@
-import os
+import os, numpy as np
 from . import utils
 from abc import ABCMeta, abstractmethod, abstractproperty
 
@@ -22,7 +22,10 @@ class Measurement(metaclass=ABCMeta):
 
     @property
     def command(self):
-        return utils.scan_command(self.nxsfilepath)
+        command = utils.scan_command(self.nxsfilepath)
+        if type(command) == np.ndarray:
+            command = str(command)[3:-3]
+        return command
 
     @property
     def masterfilepath(self):
