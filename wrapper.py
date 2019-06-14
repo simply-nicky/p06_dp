@@ -78,7 +78,7 @@ class Scan(Measurement, metaclass=ABCMeta):
         return utils.data(self.masterfilepath, self.fast_size)
 
     def save_average(self):
-        return 
+        pass
 
 class StepScan1D(Scan):
     mode = 'scan'
