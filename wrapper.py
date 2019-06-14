@@ -92,6 +92,7 @@ class StepScan2D(Scan):
 
     def __init__(self, prefix, scan_num):
         self.prefix, self.scan_num = prefix, scan_num
+        self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
 
 class FlyScan2D(Scan):
     mode = 'scan'
@@ -99,3 +100,4 @@ class FlyScan2D(Scan):
 
     def __init__(self, prefix, scan_num):
         self.prefix, self.scan_num = prefix, scan_num
+        self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
