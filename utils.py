@@ -52,4 +52,4 @@ def data(masterfilepath, fast_size):
     for key in dataset:
         try: data.append(np.multiply(full_mask, dataset[key][:]))
         except KeyError: continue
-    return np.concatenate(data)
+    return np.concatenate(data, axis=0)
