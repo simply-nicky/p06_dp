@@ -29,10 +29,10 @@ def scan2d_attrs(command):
 
 def get_attributes(command):
     nums = []
-    for part in command.split(" ")[:-1]:
+    for part in command.split(" "):
         try: nums.append(float(part))
         except: continue
-    return tuple(nums)
+    return tuple(nums[:-1])
 
 def coordinates(command):
     start, stop, steps = get_attributes(command)
