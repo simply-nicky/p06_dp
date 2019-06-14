@@ -54,4 +54,4 @@ def data(masterfilepath, fast_size):
             data.append(np.multiply(full_mask, dataset[key][:]))
             print("data shape: {}".format(dataset[key].shape))
         except KeyError: continue
-    return np.stack(data)
+    return np.concatenate(data, axis=0)
