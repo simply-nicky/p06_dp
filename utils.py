@@ -9,7 +9,7 @@ nxspath = "/scan/program_name"
 commandpath = "scan_command"
 datapath = "/entry/data"
 energypath = "scan/data/energy"
-commands = {'single_frame': 'cnt', 'stepscan1d': 'dscan', 'stepscan2d': 'dmesh', 'flyscan2d': 'cmesh'}
+commands = {'single_frame': ('cnt', 'ct'), 'stepscan1d': ('dscan', 'ascan'), 'stepscan2d': 'dmesh', 'flyscan2d': 'cmesh'}
 
 def scan_command(nxsfilepath):
     nxsfile = h5py.File(nxsfilepath, 'r')

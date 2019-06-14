@@ -74,7 +74,6 @@ class Scan(Measurement, metaclass=ABCMeta):
     @abstractproperty
     def fast_crds(self): pass
 
-    @property
     def data(self):
         return utils.data(self.masterfilepath, self.fast_size)
 
