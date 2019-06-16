@@ -55,7 +55,7 @@ def data_chunk(paths, full_mask):
         with h5py.File(path, 'r') as datafile:
             try: data_list.append(np.multiply(full_mask, datafile[datapath][:]))
             except KeyError: continue
-    return data_list
+    return np.concatenate(data_list, axis=0)
 
 def data(path, fast_size):
     paths = np.sort(np.array([os.path.join(path, filename) for filename in os.listdir(path) if not filename.endswith('master.h5')], dtype=object))
@@ -66,5 +66,5 @@ def data(path, fast_size):
     data_list = []
     with concurrent.futures.ProcessPoolExecutor() as executor:
         for _data_chunk in executor.map(worker, np.array_split(paths, thread_num)):
-            data_list.extend(_data_chunk)
+            data_list.append(_data_chunk)
     return np.concatenate(data_list, axis=0)
