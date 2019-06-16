@@ -55,6 +55,7 @@ def data_chunk(paths, full_mask):
         with h5py.File(path, 'r') as datafile:
             try: data_list.append(np.multiply(full_mask, datafile[datapath][:]))
             except KeyError: continue
+    print('data_chunk shape: {}'.format(np.concatenate(data_list, axis=0).shape))
     return np.concatenate(data_list, axis=0)
 
 def data(path, fast_size):
