@@ -17,7 +17,7 @@ commands = {'single_frame': ('cnt', 'ct'), 'stepscan1d': ('dscan', 'ascan'), 'st
 
 def make_output_dir(path):
     try:
-        os.makedirs(os.path.dirname(path))
+        os.makedirs(path)
     except OSError as e:
         if e.errno != errno.EEXIST: raise
 
