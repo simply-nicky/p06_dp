@@ -70,6 +70,8 @@ def data(masterfilepath, fast_size):
     full_mask = np.tile(mask, (fast_size, 1, 1))
     thread_num = min(keys.size, cpu_count())
     max_workers = min(thread_num, cpu_count())
+    print('thread_num: {}'.format(thread_num))
+    print('max_workers: {}'.format(max_workers))
     worker = partial(data_chunk, masterfilepath=masterfilepath, full_mask=full_mask)
     data_list = []
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
