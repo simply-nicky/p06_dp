@@ -93,6 +93,6 @@ class Viewer(QtGui.QMainWindow):
         _label_widget.setAlignment(QtCore.Qt.AlignCenter)
         self.layout.addWidget(_label_widget)
         _image_view = pg.ImageView()
-        _image_view.setImage(img=data, levels=levels)
         _image_view.setPredefinedGradient('thermal')
+        _image_view.setImage(img=data, levels=levels)
         self.layout.addWidget(_image_view)
