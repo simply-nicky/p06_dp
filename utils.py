@@ -68,4 +68,5 @@ def data(path, fast_size):
         for _data_chunk in executor.map(worker, np.array_split(paths, thread_num)):
             if not data_list is None:
                 data_list.append(_data_chunk)
+    print("list size: {}".format(len(data_list)))
     return np.concatenate(data_list, axis=0)
