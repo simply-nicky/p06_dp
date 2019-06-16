@@ -139,7 +139,7 @@ class CorrectedScan(object):
         outfile.close()
 
 class StepScan1D(Scan):
-    prefix, scan_num, fast_size, fast_crds, data = None, None, None, None, None
+    prefix, scan_num, fast_size, fast_crds = None, None, None, None
 
     def __init__(self, prefix, scan_num):
         self.prefix, self.scan_num = prefix, scan_num
@@ -162,14 +162,14 @@ class Scan2D(Scan, metaclass=ABCMeta):
         datagroup.create_dataset('data', data=self.data(), compression='gzip')
 
 class StepScan2D(Scan2D):
-    prefix, scan_num, fast_size, fast_crds, slow_size, slow_crds, data = None, None, None, None, None, None, None
+    prefix, scan_num, fast_size, fast_crds, slow_size, slow_crds = None, None, None, None, None, None
 
     def __init__(self, prefix, scan_num):
         self.prefix, self.scan_num = prefix, scan_num
         self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
 
 class FlyScan2D(Scan2D):
-    prefix, scan_num, fast_size, fast_crds, slow_size, slow_crds, data = None, None, None, None, None, None, None
+    prefix, scan_num, fast_size, fast_crds, slow_size, slow_crds = None, None, None, None, None, None
 
     def __init__(self, prefix, scan_num):
         self.prefix, self.scan_num = prefix, scan_num
