@@ -1,5 +1,6 @@
 import numpy as np, h5py, os, errno, concurrent.futures
 from functools import partial
+from multiprocessing import cpu_count
 
 raw_path = "/asap3/petra3/gpfs/p06/2019/data/11006252/raw"
 prefixes = {'alignment': '0001_alignment', 'opal': '0001_opal', 'b12_1': '0002_b12_1', 'b12_2': '0002_b12_2'}
@@ -55,17 +56,23 @@ def coordinates2d(command):
     slow_crds = np.linspace(start1, stop1, int(steps1) + 1, endpoint=True)
     return fast_crds, int(steps0) + 1, slow_crds, int(steps1) + 1
 
-def data_chunk(key, masterfilepath, full_mask):
+def data_chunk(keys, masterfilepath, full_mask):
     masterfile = h5py.File(masterfilepath, 'r')
     dataset = masterfile[datapath]
-    try: return np.multiply(full_mask, dataset[key][:])
-    except KeyError: return None
+    data_list = []
+    for key in keys:
+        try: data_list.append(np.multiply(full_mask, dataset[key][:]))
+        except KeyError: continue
+    return data_list
 
 def data(masterfilepath, fast_size):
-    keys = list(h5py.File(masterfilepath, 'r')[datapath].keys())
-    keys.sort()
+    keys = np.sort(np.array(list(h5py.File(masterfilepath, 'r')[datapath].keys()), dtype=object))
     full_mask = np.tile(mask, (fast_size, 1, 1))
+    thread_num = min(keys.size, cpu_count())
+    max_workers = min(thread_num, cpu_count())
     worker = partial(data_chunk, masterfilepath=masterfilepath, full_mask=full_mask)
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        data_list = [_data_chunk for _data_chunk in executor.map(worker, keys)]
-    return np.concatenate([data for data in data_list if data], axis=0)
+    data_list = []
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+        for _data_chunk in executor.map(worker, np.array_split(keys, thread_num)):
+            data_list.extend(_data_chunk)
+    return np.concatenate(data_list, axis=0)
