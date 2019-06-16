@@ -78,7 +78,7 @@ class Frame(Measurement):
     
     def _save_data(self, outfile):
         datagroup = outfile.create_group('data')
-        datagroup.create_dataset('data', data=self.data)
+        datagroup.create_dataset('data', data=self.data())
   
 class ScanFactory(object):
     def __init__(self, prefix, scan_num):
@@ -105,31 +105,28 @@ class Scan(Measurement, metaclass=ABCMeta):
     @abstractproperty
     def fast_crds(self): pass
 
-    @abstractproperty
-    def data(self): pass
-
     @property
     def size(self): return (self.fast_size,)
 
     def flatfield_correct(self, bg_num):
         bg_scan = ScanFactory(self.prefix, bg_num).open()
-        flatfield = np.mean(bg_scan.data, axis=0)
+        flatfield = np.mean(bg_scan.data(), axis=0)
         return CorrectedScan(self, flatfield)
 
     def _save_data(self, outfile):
         datagroup = outfile.create_group('data')
         datagroup.create_dataset('fast_coordinates', data=self.fast_crds)
-        datagroup.create_dataset('data', data=self.data, compression='gzip')
+        datagroup.create_dataset('data', data=self.data(), compression='gzip')
 
 class CorrectedScan(object):
     def __init__(self, scan, flatfield):
         self.scan, self.flatfield = scan, flatfield
 
     def subtract_data(self):
-        return np.subtract(self.scan.data, self.flatfield[np.newaxis, :])
+        return np.subtract(self.scan.data(), self.flatfield[np.newaxis, :])
 
     def divide_data(self):
-        return np.divide(self.scan.data, self.flatfield[np.newaxis, :] + 1)
+        return np.divide(self.scan.data(), self.flatfield[np.newaxis, :] + 1)
 
     def save(self):
         outfile = self.scan._create_outfile()
@@ -162,7 +159,7 @@ class Scan2D(Scan, metaclass=ABCMeta):
         datagroup = outfile.create_group('data')
         datagroup.create_dataset('fast_coordinates', data=self.fast_crds)
         datagroup.create_dataset('slow_coordinates', data=self.slow_crds)
-        datagroup.create_dataset('data', data=self.data, compression='gzip')
+        datagroup.create_dataset('data', data=self.data(), compression='gzip')
 
 class StepScan2D(Scan2D):
     prefix, scan_num, fast_size, fast_crds, slow_size, slow_crds, data = None, None, None, None, None, None, None
