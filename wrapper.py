@@ -81,7 +81,7 @@ class Frame(Measurement):
     
     def _save_data(self, outfile, data=None):
         datagroup = outfile.create_group('data')
-        datagroup.create_dataset('data', data=data if data else self.data())
+        datagroup.create_dataset('data', data=self.data() if data is None else data)
   
 class ScanFactory(object):
     def __init__(self, prefix, scan_num):
@@ -119,7 +119,7 @@ class Scan(Measurement, metaclass=ABCMeta):
     def _save_data(self, outfile, data=None):
         datagroup = outfile.create_group('data')
         datagroup.create_dataset('fast_coordinates', data=self.fast_crds)
-        datagroup.create_dataset('data', data=data if data else self.data(), compression='gzip')
+        datagroup.create_dataset('data', data=self.data() if data is None else data, compression='gzip')
 
 class CorrectedScan(object):
     def __init__(self, scan, flatfield):
@@ -169,7 +169,7 @@ class Scan2D(Scan, metaclass=ABCMeta):
         datagroup = outfile.create_group('data')
         datagroup.create_dataset('fast_coordinates', data=self.fast_crds)
         datagroup.create_dataset('slow_coordinates', data=self.slow_crds)
-        datagroup.create_dataset('data', data=data if data else self.data(), compression='gzip')
+        datagroup.create_dataset('data', data=self.data() if data is None else data, compression='gzip')
 
 class StepScan2D(Scan2D):
     prefix, scan_num, fast_size, fast_crds, slow_size, slow_crds = None, None, None, None, None, None
