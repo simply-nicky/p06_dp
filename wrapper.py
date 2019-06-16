@@ -13,7 +13,7 @@ class Measurement(metaclass=ABCMeta):
     def prefix(self): pass
 
     @abstractmethod
-    def _save_data(self, outfile): pass
+    def _save_data(self, outfile, data=None): pass
 
     @abstractmethod
     def size(self): pass
@@ -79,9 +79,9 @@ class Frame(Measurement):
     def __init__(self, prefix, scan_num):
         self.prefix, self.scan_num = prefix, scan_num
     
-    def _save_data(self, outfile):
+    def _save_data(self, outfile, data=None):
         datagroup = outfile.create_group('data')
-        datagroup.create_dataset('data', data=self.data())
+        datagroup.create_dataset('data', data=data if data else self.data())
   
 class ScanFactory(object):
     def __init__(self, prefix, scan_num):
@@ -116,10 +116,10 @@ class Scan(Measurement, metaclass=ABCMeta):
         flatfield = np.mean(bg_scan.data(), axis=0)
         return CorrectedScan(self, flatfield)
 
-    def _save_data(self, outfile):
+    def _save_data(self, outfile, data=None):
         datagroup = outfile.create_group('data')
         datagroup.create_dataset('fast_coordinates', data=self.fast_crds)
-        datagroup.create_dataset('data', data=self.data(), compression='gzip')
+        datagroup.create_dataset('data', data=data if data else self.data(), compression='gzip')
 
 class CorrectedScan(object):
     def __init__(self, scan, flatfield):
@@ -131,20 +131,21 @@ class CorrectedScan(object):
         utils.make_output_dir(self.outpath)
         return h5py.File(os.path.join(self.outpath, self.filename), 'w')
 
-    def subtract_data(self):
+    def subtract_data(self, data=None):
         return np.subtract(self.scan.data(), self.flatfield[np.newaxis, :])
 
-    def divide_data(self):
+    def divide_data(self, data=None):
         return np.divide(self.scan.data(), self.flatfield[np.newaxis, :] + 1)
 
     def save(self):
+        data = self.scan.data()
         outfile = self._create_outfile()
         self.scan._save_parameters(outfile)
-        self.scan._save_data(outfile)
+        self.scan._save_data(outfile, data=data)
         correct_group = outfile.create_group('corrected_data')
         correct_group.create_dataset('flatfield', data=self.flatfield)
-        correct_group.create_dataset('divided_data', data=self.divide_data(), compression='gzip')
-        correct_group.create_dataset('sibtract_data', data=self.subtract_data(), compression='gzip')
+        correct_group.create_dataset('divided_data', data=self.divide_data(data=data), compression='gzip')
+        correct_group.create_dataset('sibtract_data', data=self.subtract_data(data=data), compression='gzip')
         outfile.close()
 
 class StepScan1D(Scan):
@@ -164,11 +165,11 @@ class Scan2D(Scan, metaclass=ABCMeta):
     @property
     def size(self): return (self.slow_size, self.fast_size)
 
-    def _save_data(self, outfile):
+    def _save_data(self, outfile, data=None):
         datagroup = outfile.create_group('data')
         datagroup.create_dataset('fast_coordinates', data=self.fast_crds)
         datagroup.create_dataset('slow_coordinates', data=self.slow_crds)
-        datagroup.create_dataset('data', data=self.data(), compression='gzip')
+        datagroup.create_dataset('data', data=data if data else self.data(), compression='gzip')
 
 class StepScan2D(Scan2D):
     prefix, scan_num, fast_size, fast_crds, slow_size, slow_crds = None, None, None, None, None, None
