@@ -66,7 +66,7 @@ def data(path, fast_size):
     data_list = []
     with concurrent.futures.ProcessPoolExecutor() as executor:
         for _data_chunk in executor.map(worker, np.array_split(paths, thread_num)):
-            if not data_list is None:
+            if not _data_chunk is None:
                 print("data_chunk: {}".format(_data_chunk))
                 print('data_chunk shape: {}'.format(_data_chunk.shape))
                 data_list.append(_data_chunk)
