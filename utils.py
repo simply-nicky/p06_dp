@@ -57,7 +57,7 @@ def coordinates2d(command):
     return fast_crds, int(steps0) + 1, slow_crds, int(steps1) + 1
 
 def data_chunk(keys, masterfilepath, full_mask):
-    masterfile = h5py.File(masterfilepath, 'r')
+    masterfile = h5py.File(masterfilepath, 'r', driver='latest')
     dataset = masterfile[datapath]
     data_list = []
     for key in keys:
