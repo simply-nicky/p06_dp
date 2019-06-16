@@ -62,7 +62,7 @@ def data_chunk(key, masterfilepath, full_mask):
     except KeyError: return None
 
 def data(masterfilepath, fast_size):
-    keys = h5py.File(masterfilepath, 'r')[datapath].keys()
+    keys = list(h5py.File(masterfilepath, 'r')[datapath].keys())
     keys.sort()
     full_mask = np.tile(mask, (fast_size, 1, 1))
     worker = partial(data_chunk, masterfilepath=masterfilepath, full_mask=full_mask)
