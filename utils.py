@@ -1,4 +1,5 @@
-import numpy as np, h5py, os, errno
+import numpy as np, h5py, os, errno, concurrent.futures
+from functools import partial
 
 raw_path = "/asap3/petra3/gpfs/p06/2019/data/11006252/raw"
 prefixes = {'alignment': '0001_alignment', 'opal': '0001_opal', 'b12_1': '0002_b12_1', 'b12_2': '0002_b12_2'}
@@ -54,13 +55,17 @@ def coordinates2d(command):
     slow_crds = np.linspace(start1, stop1, int(steps1) + 1, endpoint=True)
     return fast_crds, int(steps0) + 1, slow_crds, int(steps1) + 1
 
-def data(masterfilepath, fast_size):
+def data_chunk(key, masterfilepath, full_mask):
     masterfile = h5py.File(masterfilepath, 'r')
     dataset = masterfile[datapath]
+    try: return np.multiply(full_mask, dataset[key][:])
+    except KeyError: return None
+
+def data(masterfilepath, fast_size):
+    keys = h5py.File(masterfilepath, 'r')[datapath].keys()
+    keys.sort()
     full_mask = np.tile(mask, (fast_size, 1, 1))
-    data = []
-    for key in dataset:
-        try:
-            data.append(np.multiply(full_mask, dataset[key][:]))
-        except KeyError: continue
-    return np.concatenate(data, axis=0)
+    worker = partial(data_chunk, masterfilepath=masterfilepath, full_mask=full_mask)
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        data_list = [_data_chunk for _data_chunk in executor.map(worker, keys)]
+    return np.concatenate([data for data in data_list if data], axis=0)

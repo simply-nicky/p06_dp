@@ -122,7 +122,7 @@ class CorrectedScan(object):
         return np.subtract(self.scan.data, self.flatfield[np.newaxis, :])
 
     def divide_data(self):
-        return np.divide(self.scan.data, self.flatfield[np.newaxis, :])
+        return np.divide(self.scan.data, self.flatfield[np.newaxis, :] + 1)
 
     def save(self):
         outfile = self.scan._create_outfile()
