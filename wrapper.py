@@ -40,7 +40,10 @@ class Measurement(metaclass=ABCMeta):
 
     @property
     def exposure(self):
-        return float(self.command.split(" ")[-1])
+        parts = self.command.split(" ")
+        try: exposure = float(parts[-1])
+        except: exposure = float(parts[-2])
+        return exposure
 
     def data(self):
         return utils.data(self.datapath, self.size[-1])

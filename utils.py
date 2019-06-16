@@ -32,14 +32,6 @@ def energy(nxsfilepath):
     nxsfile = h5py.File(nxsfilepath, 'r')
     return nxsfile[energypath]
 
-def scan2d_attrs(command):
-    nums = []
-    for part in command.split(" "):
-        try: nums.append(float(part))
-        except: continue
-    *coord_attrs, exp = nums
-    return coord_attrs, exp
-
 def get_attributes(command):
     nums = []
     for part in command.split(" "):
