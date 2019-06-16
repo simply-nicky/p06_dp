@@ -122,7 +122,7 @@ class Scan(Measurement, metaclass=ABCMeta):
     @property
     def size(self): return (self.fast_size,)
 
-    def flatfield_correct(self, bg_num):
+    def correct(self, bg_num):
         bg_scan = ScanFactory(self.prefix, bg_num).open()
         flatfield = np.mean(bg_scan.data(), axis=0)
         return CorrectedScan(self, flatfield)
