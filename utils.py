@@ -13,6 +13,7 @@ datapath = "entry/data/data"
 energypath = "scan/data/energy"
 outpath = {'scan': "../results/scan_{0:05}", 'frame': "../results/count_{0:05}"}
 filename = {'scan': "scan_{0:05}.h5", 'frame': "count_{0:05}.h5"}
+filename_corrected = {'scan': "scan_corrected_{0:05}.h5", 'frame': "count_corrected_{0:05}.h5"}
 commands = {'single_frame': ('cnt', 'ct'), 'stepscan1d': ('dscan', 'ascan'), 'stepscan2d': 'dmesh', 'flyscan2d': 'cmesh'}
 
 def make_output_dir(path):
