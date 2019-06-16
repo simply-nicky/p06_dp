@@ -59,7 +59,7 @@ def coordinates2d(command):
 def data_chunk(paths, full_mask):
     data_list = []
     for path in paths:
-        with h5py.File(path, 'r', driver='latest') as datafile:
+        with h5py.File(path, 'r') as datafile:
             try: data_list.append(np.multiply(full_mask, datafile[datapath][:]))
             except KeyError: continue
     return data_list
