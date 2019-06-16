@@ -1,6 +1,11 @@
-import numpy as np, h5py, os, errno, concurrent.futures
+import numpy as np, h5py, os, errno, concurrent.futures, pyqtgraph as pg
 from functools import partial
 from multiprocessing import cpu_count
+
+try:
+    from PyQt5 import QtCore, QtGui
+except ImportError:
+    from PyQt4 import QtCore, QtGui
 
 raw_path = "/asap3/petra3/gpfs/p06/2019/data/11006252/raw"
 prefixes = {'alignment': '0001_alignment', 'opal': '0001_opal', 'b12_1': '0002_b12_1', 'b12_2': '0002_b12_2'}
@@ -69,3 +74,25 @@ def data(path, fast_size):
             if not _data_chunk is None:
                 data_list.append(_data_chunk)
     return np.concatenate(data_list, axis=0)
+
+class Viewer(QtGui.QMainWindow):
+    def __init__(self, data, label, levels, parent=None, size=(640, 480)):
+        super(Viewer, self).__init__(parent=parent, size=QtCore.QSize(size[0], size[1]))
+        self.setWindowTitle('CBC Viewer')
+        self.update_ui(data, label, levels)
+
+        self.central_widget = QtGui.QWidget()
+        self.central_widget.setLayout(self.layout)
+        self.setCentralWidget(self.central_widget)
+
+        self.show()
+
+    def update_ui(self, data, label, levels):
+        self.layout = QtGui.QVBoxLayout()
+        _label_widget = QtGui.QLabel(label)
+        _label_widget.setAlignment(QtCore.Qt.AlignCenter)
+        self.layout.addWidget(_label_widget)
+        _image_view = pg.ImageView()
+        _image_view.setImage(img=data, levels=levels)
+        _image_view.setPredefinedGradient('spectrum')
+        self.layout.addWidget(_image_view)

@@ -1,6 +1,11 @@
-import os, numpy as np, h5py
+import os, numpy as np, h5py, sys
 from . import utils
 from abc import ABCMeta, abstractmethod, abstractproperty
+
+try:
+    from PyQt5 import QtCore, QtGui
+except ImportError:
+    from PyQt4 import QtCore, QtGui
 
 class Measurement(metaclass=ABCMeta):
     @abstractproperty
@@ -47,6 +52,12 @@ class Measurement(metaclass=ABCMeta):
 
     def data(self):
         return utils.data(self.datapath, self.size[-1])
+
+    def show(self, data=None):
+        _app = QtGui.QApplication([])
+        _viewer = utils.Viewer(data=self.data() if data is None else data, label=self.path, levels=(0, 100))
+        if sys.flags.interactive != 1 or not hasattr(QtCore, 'PYQT_VERSION'):
+            _app.exec_()
 
     def _create_outfile(self):
         self.outpath = os.path.join(os.path.dirname(__file__), utils.outpath[self.mode].format(self.scan_num))
