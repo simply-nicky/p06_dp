@@ -25,10 +25,7 @@ class Measurement(metaclass=ABCMeta):
 
     @property
     def command(self):
-        command = utils.scan_command(self.nxsfilepath)
-        if type(command) == np.ndarray:
-            command = str(command)[2:-2]
-        return command
+        return utils.scan_command(self.nxsfilepath)
 
     @property
     def masterfilepath(self):
@@ -79,7 +76,8 @@ class Frame(Measurement):
 class ScanFactory(object):
     def __init__(self, prefix, scan_num):
         self.prefix, self.scan_num = prefix, scan_num
-        self.command = Measurement.command(self)
+        self.path = os.path.join(os.path.join(utils.raw_path, utils.prefixes[self.prefix], utils.measpath['scan'].format(self.scan_num)))
+        self.command = utils.scan_command(self.path + '.nxs')
 
     def open(self):
         if self.command.startswith(utils.commands['stepscan1d']):

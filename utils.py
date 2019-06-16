@@ -20,8 +20,10 @@ def make_output_dir(path):
         if e.errno != errno.EEXIST: raise
 
 def scan_command(nxsfilepath):
-    nxsfile = h5py.File(nxsfilepath, 'r')
-    return nxsfile[nxspath].attrs[commandpath]
+    command = h5py.File(nxsfilepath, 'r')[nxspath].attrs[commandpath]
+    if type(command) == np.ndarray:
+        command = str(command)[2:-2]
+    return command
 
 def energy(nxsfilepath):
     nxsfile = h5py.File(nxsfilepath, 'r')
