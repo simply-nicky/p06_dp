@@ -132,10 +132,10 @@ class CorrectedScan(object):
         return h5py.File(os.path.join(self.outpath, self.filename), 'w')
 
     def subtract_data(self, data=None):
-        return np.subtract(self.scan.data(), self.flatfield[np.newaxis, :])
+        return np.subtract(self.scan.data() if data is None else data, self.flatfield[np.newaxis, :])
 
     def divide_data(self, data=None):
-        return np.divide(self.scan.data(), self.flatfield[np.newaxis, :] + 1)
+        return np.divide(self.scan.data() if data is None else data, self.flatfield[np.newaxis, :] + 1)
 
     def save(self):
         data = self.scan.data()
