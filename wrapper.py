@@ -101,6 +101,9 @@ class Scan(Measurement, metaclass=ABCMeta):
     @abstractproperty
     def data(self): pass
 
+    @property
+    def size(self): return (self.fast_size,)
+
     def flatfield_correct(self, bg_num):
         bg_scan = ScanFactory(self.prefix, bg_num).open()
         flatfield = np.mean(bg_scan.data, axis=0)
@@ -139,18 +142,15 @@ class StepScan1D(Scan):
         self.fast_crds, self.fast_size = utils.coordinates(self.command)
         self.data = utils.data(self.masterfilepath, self.fast_size)
 
-    def save(self):
-        outfile = self._create_outfile()
-        self._save_parameters(outfile)
-        self._save_data(outfile)
-        outfile.close()
-
 class Scan2D(Scan, metaclass=ABCMeta):
     @abstractproperty
     def slow_size(self): pass
 
     @abstractproperty
     def slow_crds(self): pass
+
+    @property
+    def size(self): return (self.slow_size, self.fast_size)
 
     def _save_data(self, outfile):
         datagroup = outfile.create_group('data')
