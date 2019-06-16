@@ -94,5 +94,5 @@ class Viewer(QtGui.QMainWindow):
         self.layout.addWidget(_label_widget)
         _image_view = pg.ImageView()
         _image_view.setImage(img=data, levels=levels)
-        _image_view.setPredefinedGradient('spectrum')
+        _image_view.setPredefinedGradient('thermal')
         self.layout.addWidget(_image_view)

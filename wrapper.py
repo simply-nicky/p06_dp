@@ -53,9 +53,9 @@ class Measurement(metaclass=ABCMeta):
     def data(self):
         return utils.data(self.datapath, self.size[-1])
 
-    def show(self, data=None):
+    def show(self, data=None, levels=(0, 100)):
         _app = QtGui.QApplication([])
-        _viewer = utils.Viewer(data=self.data() if data is None else data, label=self.path, levels=(0, 100))
+        _viewer = utils.Viewer(data=self.data() if data is None else data, label=self.path, levels=levels)
         if sys.flags.interactive != 1 or not hasattr(QtCore, 'PYQT_VERSION'):
             _app.exec_()
 
@@ -142,11 +142,17 @@ class CorrectedScan(object):
         utils.make_output_dir(self.outpath)
         return h5py.File(os.path.join(self.outpath, self.filename), 'w')
 
-    def subtract_data(self, data=None):
+    def subtracted_data(self, data=None):
         return np.subtract(self.scan.data() if data is None else data, self.flatfield[np.newaxis, :])
 
-    def divide_data(self, data=None):
+    def divided_data(self, data=None):
         return np.divide(self.scan.data() if data is None else data, self.flatfield[np.newaxis, :] + 1)
+
+    def show_divided(self, data=None, levels=(0, 100)):
+        self.scan.show(data=self.divided_data(data=data), levels=levels)
+
+    def show_subtracted(self, data=None, levels=(0, 100)):
+        self.scan.show(data=self.subtracted_data(data=data), levels=levels)
 
     def save(self):
         data = self.scan.data()
@@ -155,8 +161,8 @@ class CorrectedScan(object):
         self.scan._save_data(outfile, data=data)
         correct_group = outfile.create_group('corrected_data')
         correct_group.create_dataset('flatfield', data=self.flatfield)
-        correct_group.create_dataset('divided_data', data=self.divide_data(data=data), compression='gzip')
-        correct_group.create_dataset('sibtract_data', data=self.subtract_data(data=data), compression='gzip')
+        correct_group.create_dataset('divided_data', data=self.divided_data(data=data), compression='gzip')
+        correct_group.create_dataset('sibtract_data', data=self.subtracted_data(data=data), compression='gzip')
         outfile.close()
 
 class StepScan1D(Scan):
