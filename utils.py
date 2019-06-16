@@ -1,4 +1,4 @@
-import numpy as np, h5py, os
+import numpy as np, h5py, os, errno
 
 raw_path = "/asap3/petra3/gpfs/p06/2019/data/11006252/raw"
 prefixes = {'alignment': '0001_alignment', 'opal': '0001_opal', 'b12': '0002_b12_1'}
@@ -9,7 +9,15 @@ nxspath = "/scan/program_name"
 commandpath = "scan_command"
 datapath = "/entry/data"
 energypath = "scan/data/energy"
+outpath = {'scan': "../results/scan_{0:05}", 'frame': "../results/count_{0:05}"}
+filename = {'scan': "scan_{0:05}.h5", 'frame': "count_{0:05}.h5"}
 commands = {'single_frame': ('cnt', 'ct'), 'stepscan1d': ('dscan', 'ascan'), 'stepscan2d': 'dmesh', 'flyscan2d': 'cmesh'}
+
+def make_output_dir(path):
+    try:
+        os.makedirs(os.path.dirname(path))
+    except OSError as e:
+        if e.errno != errno.EEXIST: raise
 
 def scan_command(nxsfilepath):
     nxsfile = h5py.File(nxsfilepath, 'r')
