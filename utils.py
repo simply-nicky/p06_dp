@@ -68,12 +68,10 @@ def data(path, fast_size):
     paths = np.sort(np.array([os.path.join(path, filename) for filename in os.listdir(path) if not filename.endswith('master.h5')], dtype=object))
     full_mask = np.tile(mask, (fast_size, 1, 1))
     thread_num = min(paths.size, cpu_count())
-    max_workers = min(thread_num, cpu_count())
     print('thread_num: {}'.format(thread_num))
-    print('max_workers: {}'.format(max_workers))
     worker = partial(data_chunk, full_mask=full_mask)
     data_list = []
-    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+    with concurrent.futures.ProcessPoolExecutor() as executor:
         for _data_chunk in executor.map(worker, np.array_split(paths, thread_num)):
             data_list.extend(_data_chunk)
     return np.concatenate(data_list, axis=0)
