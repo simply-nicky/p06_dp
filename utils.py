@@ -60,7 +60,7 @@ def data_chunk(paths):
         with h5py.File(path, 'r') as datafile:
             try: data_list.append(np.multiply(mask, np.mean(datafile[datapath][:], axis=0)))
             except KeyError: continue
-    return None if not data_list else np.concatenate(data_list, axis=0) 
+    return None if not data_list else np.stack(data_list, axis=0) 
 
 def data(path, fast_size):
     paths = np.sort(np.array([os.path.join(path, filename) for filename in os.listdir(path) if not filename.endswith('master.h5')], dtype=object))
