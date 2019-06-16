@@ -6,10 +6,10 @@ raw_path = "/asap3/petra3/gpfs/p06/2019/data/11006252/raw"
 prefixes = {'alignment': '0001_alignment', 'opal': '0001_opal', 'b12_1': '0002_b12_1', 'b12_2': '0002_b12_2'}
 mask = np.load("/gpfs/cfel/cxi/scratch/user/murrayke/Processed_Data/Petra/Jun_2019/mask/P06_mask.npy").astype(np.int)
 measpath = {'scan': "scan_{0:05}", "frame": "count_{0:05}"}
-masterfilepath = {'scan': "eiger4m_01/scan_{0:05}_master.h5", 'frame': "eiger4m_01/count_{0:05}_master.h5"}
+datafilepath = "eiger4m_01"
 nxspath = "/scan/program_name"
 commandpath = "scan_command"
-datapath = "/entry/data"
+datapath = "entry/data/data"
 energypath = "scan/data/energy"
 outpath = {'scan': "../results/scan_{0:05}", 'frame': "../results/count_{0:05}"}
 filename = {'scan': "scan_{0:05}.h5", 'frame': "count_{0:05}.h5"}
@@ -56,25 +56,24 @@ def coordinates2d(command):
     slow_crds = np.linspace(start1, stop1, int(steps1) + 1, endpoint=True)
     return fast_crds, int(steps0) + 1, slow_crds, int(steps1) + 1
 
-def data_chunk(keys, masterfilepath, full_mask):
-    masterfile = h5py.File(masterfilepath, 'r', driver='latest')
-    dataset = masterfile[datapath]
+def data_chunk(paths, full_mask):
     data_list = []
-    for key in keys:
-        try: data_list.append(np.multiply(full_mask, dataset[key][:]))
-        except KeyError: continue
+    for path in paths:
+        with h5py.File(path, 'r', driver='latest') as datafile:
+            try: data_list.append(np.multiply(full_mask, datafile[datapath][:]))
+            except KeyError: continue
     return data_list
 
-def data(masterfilepath, fast_size):
-    keys = np.sort(np.array(list(h5py.File(masterfilepath, 'r')[datapath].keys()), dtype=object))
+def data(path, fast_size):
+    paths = np.sort(np.array([os.path.join(path, filename) for filename in os.listdir(path) if not filename.endswith('master.h5')], dtype=object))
     full_mask = np.tile(mask, (fast_size, 1, 1))
-    thread_num = min(keys.size, cpu_count())
+    thread_num = min(paths.size, cpu_count())
     max_workers = min(thread_num, cpu_count())
     print('thread_num: {}'.format(thread_num))
     print('max_workers: {}'.format(max_workers))
-    worker = partial(data_chunk, masterfilepath=masterfilepath, full_mask=full_mask)
+    worker = partial(data_chunk, full_mask=full_mask)
     data_list = []
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        for _data_chunk in executor.map(worker, np.array_split(keys, thread_num)):
+        for _data_chunk in executor.map(worker, np.array_split(paths, thread_num)):
             data_list.extend(_data_chunk)
     return np.concatenate(data_list, axis=0)

@@ -15,6 +15,9 @@ class Measurement(metaclass=ABCMeta):
     @abstractmethod
     def _save_data(self, outfile): pass
 
+    @abstractmethod
+    def size(self): pass
+
     @property
     def path(self):
         return os.path.join(os.path.join(utils.raw_path, utils.prefixes[self.prefix], utils.measpath[self.mode].format(self.scan_num)))
@@ -28,8 +31,8 @@ class Measurement(metaclass=ABCMeta):
         return utils.scan_command(self.nxsfilepath)
 
     @property
-    def masterfilepath(self):
-        return os.path.join(self.path, utils.masterfilepath[self.mode].format(self.scan_num))
+    def datapath(self):
+        return os.path.join(self.path, utils.datafilepath)
 
     @property
     def energy(self):
@@ -38,6 +41,9 @@ class Measurement(metaclass=ABCMeta):
     @property
     def exposure(self):
         return float(self.command.split(" ")[-1])
+
+    def data(self):
+        return utils.data(self.datapath, self.size[-1])
 
     def _create_outfile(self):
         self.outpath = os.path.join(os.path.dirname(__file__), utils.outpath[self.mode].format(self.scan_num))
@@ -65,9 +71,10 @@ class Frame(Measurement):
     mode = 'frame'
     prefix, scan_num = None, None
 
+    def size(self): return (1,)
+
     def __init__(self, prefix, scan_num):
         self.prefix, self.scan_num = prefix, scan_num
-        self.data = utils.data(self.masterfilepath, 1)
     
     def _save_data(self, outfile):
         datagroup = outfile.create_group('data')
@@ -140,7 +147,6 @@ class StepScan1D(Scan):
     def __init__(self, prefix, scan_num):
         self.prefix, self.scan_num = prefix, scan_num
         self.fast_crds, self.fast_size = utils.coordinates(self.command)
-        self.data = utils.data(self.masterfilepath, self.fast_size)
 
 class Scan2D(Scan, metaclass=ABCMeta):
     @abstractproperty
@@ -164,7 +170,6 @@ class StepScan2D(Scan2D):
     def __init__(self, prefix, scan_num):
         self.prefix, self.scan_num = prefix, scan_num
         self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
-        self.data = utils.data(self.masterfilepath, self.fast_size)
 
 class FlyScan2D(Scan2D):
     prefix, scan_num, fast_size, fast_crds, slow_size, slow_crds, data = None, None, None, None, None, None, None
@@ -172,4 +177,3 @@ class FlyScan2D(Scan2D):
     def __init__(self, prefix, scan_num):
         self.prefix, self.scan_num = prefix, scan_num
         self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
-        self.data = utils.data(self.masterfilepath, self.fast_size)
