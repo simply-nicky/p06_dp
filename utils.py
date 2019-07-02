@@ -9,7 +9,7 @@ except ImportError:
 
 raw_path = "/asap3/petra3/gpfs/p06/2019/data/11006252/raw"
 prefixes = {'alignment': '0001_alignment', 'opal': '0001_opal', 'b12_1': '0002_b12_1', 'b12_2': '0002_b12_2'}
-mask = np.load("/gpfs/cfel/cxi/scratch/user/murrayke/Processed_Data/Petra/Jun_2019/mask/P06_mask.npy").astype(np.int)
+mask = np.load(os.path.join(os.path.dirname(__file__), "P06_mask.npy")).astype(np.int)
 measpath = {'scan': "scan_{0:05}", "frame": "count_{0:05}"}
 datafilepath = "eiger4m_01"
 nxspath = "/scan/program_name"
