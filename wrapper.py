@@ -162,7 +162,7 @@ class CorrectedScan(object):
         correct_group = outfile.create_group('corrected_data')
         correct_group.create_dataset('flatfield', data=self.flatfield)
         correct_group.create_dataset('divided_data', data=self.divided_data(data=data), compression='gzip')
-        correct_group.create_dataset('sibtract_data', data=self.subtracted_data(data=data), compression='gzip')
+        correct_group.create_dataset('subtracted_data', data=self.subtracted_data(data=data), compression='gzip')
         outfile.close()
 
 class StepScan1D(Scan):
