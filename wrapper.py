@@ -112,11 +112,14 @@ class CropMeasurement(Measurement, metaclass=ABCMeta):
     @abstractproperty
     def roi(self): pass
 
+    @property
+    def roislice(self): return (slice(self.roi[0], self.roi[1]), slice(self.roi[2], self.roi[3]))
+
     def data_chunk(self, paths):
         data_list = []
         for path in paths:
             with h5py.File(path, 'r') as datafile:
-                try: data_list.append(np.multiply(utils.mask[self.roi], np.mean(datafile[utils.datapath][(slice(None),) + self.roi], axis=0)))
+                try: data_list.append(np.multiply(utils.mask[self.roislice], np.mean(datafile[utils.datapath][(slice(None),) + self.roislice], axis=0)))
                 except KeyError: continue
         return None if not data_list else np.stack(data_list, axis=0)
 
