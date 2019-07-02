@@ -1,6 +1,5 @@
-import numpy as np, h5py, os, errno, concurrent.futures, pyqtgraph as pg
+import numpy as np, h5py, os, errno,  pyqtgraph as pg
 from functools import partial
-from multiprocessing import cpu_count
 
 try:
     from PyQt5 import QtCore, QtGui
@@ -19,7 +18,8 @@ energypath = "scan/data/energy"
 outpath = {'scan': "../results/scan_{0:05}", 'frame': "../results/count_{0:05}"}
 filename = {'scan': "scan_{0:05}.h5", 'frame': "count_{0:05}.h5"}
 filename_corrected = {'scan': "scan_corrected_{0:05}.h5", 'frame': "count_corrected_{0:05}.h5"}
-commands = {'single_frame': ('cnt', 'ct'), 'stepscan1d': ('dscan', 'ascan'), 'stepscan2d': 'dmesh', 'flyscan2d': 'cmesh'}
+commands = {'single_frame': ('cnt', 'ct'), 'scan1d': ('dscan', 'ascan'), 'scan2d': ('dmesh', 'cmesh')}
+roi = (slice(500, None), slice(500, None))
 
 def make_output_dir(path):
     try:
@@ -53,25 +53,6 @@ def coordinates2d(command):
     fast_crds = np.linspace(start0, stop0, int(steps0) + 1, endpoint=True)
     slow_crds = np.linspace(start1, stop1, int(steps1) + 1, endpoint=True)
     return fast_crds, int(steps0) + 1, slow_crds, int(steps1) + 1
-
-def data_chunk(paths):
-    data_list = []
-    for path in paths:
-        with h5py.File(path, 'r') as datafile:
-            try: data_list.append(np.multiply(mask, np.mean(datafile[datapath][:], axis=0)))
-            except KeyError: continue
-    return None if not data_list else np.stack(data_list, axis=0) 
-
-def data(path, fast_size):
-    paths = np.sort(np.array([os.path.join(path, filename) for filename in os.listdir(path) if not filename.endswith('master.h5')], dtype=object))
-    thread_num = min(paths.size, cpu_count())
-    print('thread_num: {}'.format(thread_num))
-    data_list = []
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        for _data_chunk in executor.map(data_chunk, np.array_split(paths, thread_num)):
-            if not _data_chunk is None:
-                data_list.append(_data_chunk)
-    return np.concatenate(data_list, axis=0)
 
 class Viewer(QtGui.QMainWindow):
     def __init__(self, data, label, levels, parent=None, size=(640, 480)):

@@ -1,6 +1,7 @@
-import os, numpy as np, h5py, sys
+import os, numpy as np, h5py, sys, concurrent.futures
 from . import utils
 from abc import ABCMeta, abstractmethod, abstractproperty
+from multiprocessing import cpu_count
 
 try:
     from PyQt5 import QtCore, QtGui
@@ -22,6 +23,12 @@ class Measurement(metaclass=ABCMeta):
 
     @abstractmethod
     def size(self): pass
+
+    @abstractmethod
+    def data_chunk(self, paths): pass
+
+    @abstractmethod
+    def _save_parameters(self, outfile): pass
 
     @property
     def path(self):
@@ -51,7 +58,14 @@ class Measurement(metaclass=ABCMeta):
         return exposure
 
     def data(self):
-        return utils.data(self.datapath, self.size[-1])
+        _paths = np.sort(np.array([os.path.join(self.datapath, filename) for filename in os.listdir(self.datapath) if not filename.endswith('master.h5')], dtype=object))
+        _thread_num = min(_paths.size, cpu_count())
+        _data_list = []
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            for _data_chunk in executor.map(self.data_chunk, np.array_split(_paths, _thread_num)):
+                if not _data_chunk is None:
+                    _data_list.append(_data_chunk)
+        return np.concatenate(_data_list, axis=0)
 
     def show(self, data=None, levels=(0, 100)):
         _app = QtGui.QApplication([])
@@ -64,6 +78,25 @@ class Measurement(metaclass=ABCMeta):
         self.filename = utils.filename[self.mode].format(self.scan_num)
         utils.make_output_dir(self.outpath)
         return h5py.File(os.path.join(self.outpath, self.filename), 'w')
+    
+    def _save_data(self, outfile, data=None):
+        datagroup = outfile.create_group('data')
+        datagroup.create_dataset('data', data=self.data() if data is None else data)
+
+    def save(self):
+        outfile = self._create_outfile()
+        self._save_parameters(outfile)
+        self._save_data(outfile)
+        outfile.close()
+
+class FullMeasurement(Measurement, metaclass=ABCMeta):
+    def data_chunk(self, paths):
+        data_list = []
+        for path in paths:
+            with h5py.File(path, 'r') as datafile:
+                try: data_list.append(np.multiply(utils.mask, np.mean(datafile[utils.datapath][:], axis=0)))
+                except KeyError: continue
+        return None if not data_list else np.stack(data_list, axis=0)
 
     def _save_parameters(self, outfile):
         arggroup = outfile.create_group('arguments')
@@ -75,13 +108,30 @@ class Measurement(metaclass=ABCMeta):
         arggroup.create_dataset('energy', data=self.energy)
         arggroup.create_dataset('exposure', data=self.exposure)
 
-    def save(self):
-        outfile = self._create_outfile()
-        self._save_parameters(outfile)
-        self._save_data(outfile)
-        outfile.close()
+class CropMeasurement(Measurement, metaclass=ABCMeta):
+    @abstractproperty
+    def roi(self): pass
 
-class Frame(Measurement):
+    def data_chunk(self, paths):
+        data_list = []
+        for path in paths:
+            with h5py.File(path, 'r') as datafile:
+                try: data_list.append(np.multiply(utils.mask[self.roi], np.mean(datafile[utils.datapath][(slice(None),) + self.roi], axis=0)))
+                except KeyError: continue
+        return None if not data_list else np.stack(data_list, axis=0)
+
+    def _save_parameters(self, outfile):
+        arggroup = outfile.create_group('arguments')
+        arggroup.create_dataset('experiment',data=self.prefix)
+        arggroup.create_dataset('scan mode', data=self.__class__.__name__)
+        arggroup.create_dataset('scan number', data=self.scan_num)
+        arggroup.create_dataset('roi', data=self.roi)
+        arggroup.create_dataset('raw path', data=self.path)
+        arggroup.create_dataset('command', data=self.command)
+        arggroup.create_dataset('energy', data=self.energy)
+        arggroup.create_dataset('exposure', data=self.exposure)
+
+class FullFrame(FullMeasurement):
     mode = 'frame'
     prefix, scan_num = None, None
 
@@ -89,10 +139,15 @@ class Frame(Measurement):
 
     def __init__(self, prefix, scan_num):
         self.prefix, self.scan_num = prefix, scan_num
-    
-    def _save_data(self, outfile, data=None):
-        datagroup = outfile.create_group('data')
-        datagroup.create_dataset('data', data=self.data() if data is None else data)
+
+class CropFrame(CropMeasurement):
+    mode = 'frame'
+    prefix, scan_num, roi = None, None, None
+
+    def size(self): return (1,)
+
+    def __init__(self, prefix, scan_num, roi):
+        self.prefix, self.scan_num, self.roi = prefix, scan_num, roi
   
 class ScanFactory(object):
     def __init__(self, prefix, scan_num):
@@ -100,17 +155,23 @@ class ScanFactory(object):
         self.path = os.path.join(os.path.join(utils.raw_path, utils.prefixes[self.prefix], utils.measpath['scan'].format(self.scan_num)))
         self.command = utils.scan_command(self.path + '.nxs')
 
-    def open(self):
-        if self.command.startswith(utils.commands['stepscan1d']):
-            return StepScan1D(self.prefix, self.scan_num)
-        elif self.command.startswith(utils.commands['stepscan2d']):
-            return StepScan2D(self.prefix, self.scan_num)
-        elif self.command.startswith(utils.commands['flyscan2d']):
-            return FlyScan2D(self.prefix, self.scan_num)
+    def OpenFull(self):
+        if self.command.startswith(utils.commands['scan1d']):
+            return FullScan1D(self.prefix, self.scan_num)
+        elif self.command.startswith(utils.commands['scan2d']):
+            return FullScan2D(self.prefix, self.scan_num)
         else:
             raise ValueError('Unknown scan type')
 
-class Scan(Measurement, metaclass=ABCMeta):
+    def OpenCrop(self, roi):
+        if self.command.startswith(utils.commands['scan1d']):
+            return CropScan1D(self.prefix, self.scan_num, roi)
+        elif self.command.startswith(utils.commands['scan2d']):
+            return CropScan2D(self.prefix, self.scan_num, roi)
+        else:
+            raise ValueError('Unknown scan type')
+
+class FullScan(FullMeasurement, metaclass=ABCMeta):
     mode = 'scan'
 
     @abstractproperty
@@ -123,7 +184,29 @@ class Scan(Measurement, metaclass=ABCMeta):
     def size(self): return (self.fast_size,)
 
     def correct(self, bg_num):
-        bg_scan = ScanFactory(self.prefix, bg_num).open()
+        bg_scan = ScanFactory(self.prefix, bg_num).OpenFull()
+        flatfield = np.mean(bg_scan.data(), axis=0)
+        return CorrectedScan(self, flatfield)
+
+    def _save_data(self, outfile, data=None):
+        datagroup = outfile.create_group('data')
+        datagroup.create_dataset('fast_coordinates', data=self.fast_crds)
+        datagroup.create_dataset('data', data=self.data() if data is None else data, compression='gzip')
+
+class CropScan(CropMeasurement, metaclass=ABCMeta):
+    mode = 'scan'
+
+    @abstractproperty
+    def fast_size(self): pass
+
+    @abstractproperty
+    def fast_crds(self): pass
+
+    @property
+    def size(self): return (self.fast_size,)
+
+    def correct(self, bg_num):
+        bg_scan = ScanFactory(self.prefix, bg_num).OpenCrop(self.roi)
         flatfield = np.mean(bg_scan.data(), axis=0)
         return CorrectedScan(self, flatfield)
 
@@ -165,19 +248,19 @@ class CorrectedScan(object):
         correct_group.create_dataset('subtracted_data', data=self.subtracted_data(data=data), compression='gzip')
         outfile.close()
 
-class StepScan1D(Scan):
+class FullScan1D(FullScan):
     prefix, scan_num, fast_size, fast_crds = None, None, None, None
 
     def __init__(self, prefix, scan_num):
         self.prefix, self.scan_num = prefix, scan_num
         self.fast_crds, self.fast_size = utils.coordinates(self.command)
 
-class Scan2D(Scan, metaclass=ABCMeta):
-    @abstractproperty
-    def slow_size(self): pass
+class FullScan2D(FullScan):
+    prefix, scan_num, fast_size, fast_crds = None, None, None, None
 
-    @abstractproperty
-    def slow_crds(self): pass
+    def __init__(self, prefix, scan_num):
+        self.prefix, self.scan_num = prefix, scan_num
+        self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
 
     @property
     def size(self): return (self.slow_size, self.fast_size)
@@ -188,16 +271,25 @@ class Scan2D(Scan, metaclass=ABCMeta):
         datagroup.create_dataset('slow_coordinates', data=self.slow_crds)
         datagroup.create_dataset('data', data=self.data() if data is None else data, compression='gzip')
 
-class StepScan2D(Scan2D):
-    prefix, scan_num, fast_size, fast_crds, slow_size, slow_crds = None, None, None, None, None, None
+class CropScan1D(CropScan):
+    prefix, scan_num, fast_size, fast_crds, roi = None, None, None, None, None
 
-    def __init__(self, prefix, scan_num):
-        self.prefix, self.scan_num = prefix, scan_num
+    def __init__(self, prefix, scan_num, roi):
+        self.prefix, self.scan_num, self.roi = prefix, scan_num, roi
+        self.fast_crds, self.fast_size = utils.coordinates(self.command)
+
+class CropScan2D(CropScan):
+    prefix, scan_num, fast_size, fast_crds, roi = None, None, None, None, None
+
+    def __init__(self, prefix, scan_num, roi):
+        self.prefix, self.scan_num, self.roi = prefix, scan_num, roi
         self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
 
-class FlyScan2D(Scan2D):
-    prefix, scan_num, fast_size, fast_crds, slow_size, slow_crds = None, None, None, None, None, None
+    @property
+    def size(self): return (self.slow_size, self.fast_size)
 
-    def __init__(self, prefix, scan_num):
-        self.prefix, self.scan_num = prefix, scan_num
-        self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
+    def _save_data(self, outfile, data=None):
+        datagroup = outfile.create_group('data')
+        datagroup.create_dataset('fast_coordinates', data=self.fast_crds)
+        datagroup.create_dataset('slow_coordinates', data=self.slow_crds)
+        datagroup.create_dataset('data', data=self.data() if data is None else data, compression='gzip')
