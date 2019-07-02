@@ -18,6 +18,9 @@ class Measurement(metaclass=ABCMeta):
     @abstractproperty
     def prefix(self): pass
 
+    @abstractproperty
+    def filename(self): pass
+
     @abstractmethod
     def _save_data(self, outfile, data=None): pass
 
@@ -75,7 +78,6 @@ class Measurement(metaclass=ABCMeta):
 
     def _create_outfile(self):
         self.outpath = os.path.join(os.path.dirname(__file__), utils.outpath[self.mode].format(self.scan_num))
-        self.filename = utils.filename[self.mode].format(self.scan_num)
         utils.make_output_dir(self.outpath)
         return h5py.File(os.path.join(self.outpath, self.filename), 'w')
     
@@ -90,6 +92,9 @@ class Measurement(metaclass=ABCMeta):
         outfile.close()
 
 class FullMeasurement(Measurement, metaclass=ABCMeta):
+    @property
+    def filename(self): return utils.fullfilename[self.mode]
+
     def data_chunk(self, paths):
         data_list = []
         for path in paths:
@@ -114,6 +119,9 @@ class CropMeasurement(Measurement, metaclass=ABCMeta):
 
     @property
     def roislice(self): return (slice(self.roi[0], self.roi[1]), slice(self.roi[2], self.roi[3]))
+
+    @property
+    def filename(self): return utils.cropfilename[self.mode]
 
     def data_chunk(self, paths):
         data_list = []
