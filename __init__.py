@@ -1,2 +1,2 @@
-from .wrapper import Frame, ScanFactory, StepScan1D, StepScan2D, FlyScan2D, CorrectedScan
+from .wrapper import FullFrame, CropFrame, ScanFactory, FullScan1D, FullScan2D, CropScan1D, CropScan2D, CorrectedScan
 from . import utils
