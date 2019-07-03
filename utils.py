@@ -18,7 +18,6 @@ energypath = "scan/data/energy"
 outpath = {'scan': "../results/scan_{0:05}", 'frame': "../results/count_{0:05}"}
 fullfilename = {'scan': "scan_{0:05}.h5", 'frame': "count_{0:05}.h5"}
 cropfilename = {'scan': "scan_crop_{0:05}.h5", 'frame': "count_crop_{0:05}.h5"}
-filename_corrected = {'scan': "scan_corrected_{0:05}.h5", 'frame': "count_corrected_{0:05}.h5"}
 commands = {'single_frame': ('cnt', 'ct'), 'scan1d': ('dscan', 'ascan'), 'scan2d': ('dmesh', 'cmesh')}
 roi = (slice(500, None), slice(500, None))
 

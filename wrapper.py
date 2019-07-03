@@ -232,9 +232,8 @@ class CorrectedScan(object):
 
     def _create_outfile(self):
         self.outpath = os.path.join(os.path.dirname(__file__), utils.outpath[self.scan.mode].format(self.scan.scan_num))
-        self.filename = utils.filename_corrected[self.scan.mode].format(self.scan.scan_num)
         utils.make_output_dir(self.outpath)
-        return h5py.File(os.path.join(self.outpath, self.filename), 'w')
+        return h5py.File(os.path.join(self.outpath, self.scan.filename), 'w')
 
     def subtracted_data(self, data=None):
         return np.subtract(self.scan.data() if data is None else data, self.flatfield[np.newaxis, :])
