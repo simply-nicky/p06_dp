@@ -93,7 +93,7 @@ class Measurement(metaclass=ABCMeta):
 
 class FullMeasurement(Measurement, metaclass=ABCMeta):
     @property
-    def filename(self): return utils.fullfilename[self.mode]
+    def filename(self): return utils.fullfilename[self.mode].format(self.scan_num)
 
     def data_chunk(self, paths):
         data_list = []
@@ -121,7 +121,7 @@ class CropMeasurement(Measurement, metaclass=ABCMeta):
     def roislice(self): return (slice(self.roi[0], self.roi[1]), slice(self.roi[2], self.roi[3]))
 
     @property
-    def filename(self): return utils.cropfilename[self.mode]
+    def filename(self): return utils.cropfilename[self.mode].format(self.scan_num)
 
     def data_chunk(self, paths):
         data_list = []
