@@ -1,2 +1,2 @@
-from .wrapper import FullFrame, CropFrame, ScanFactory, FullScan1D, FullScan2D, CropScan1D, CropScan2D, CorrectedScan
+from .wrapper import Frame, OpenScan, Scan1D, Scan2D, FlatfieldData, Peaks
 from . import utils
