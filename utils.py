@@ -24,6 +24,7 @@ filename = {'scan': "scan_{0:s}_{1:05d}.h5", 'frame': "count_{0:s}_{1:05d}.h5"}
 commands = {'single_frame': ('cnt', 'ct'), 'scan1d': ('dscan', 'ascan'), 'scan2d': ('dmesh', 'cmesh')}
 lysroi = np.array([500, 1767, 800, 2070])
 b12roi = np.array([700, 2167, 600, 2070])
+fullroi = np.array([0, 2167, 0, 2070])
 
 def make_output_dir(path):
     try:

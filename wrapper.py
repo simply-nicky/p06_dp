@@ -93,6 +93,18 @@ class Measurement(metaclass=ABCMeta):
         self._save_data(outfile)
         outfile.close()
 
+def OpenScan(prefix, scan_num, roi=utils.fullroi):
+    path = os.path.join(os.path.join(utils.raw_path, utils.prefixes[prefix], utils.measpath['scan'].format(scan_num)))
+    command = utils.scan_command(path + '.nxs')
+    if command.startswith(utils.commands['scan1d']):
+        return Scan1D(prefix, scan_num, roi)
+    elif command.startswith(utils.commands['scan2d']):
+        return Scan2D(prefix, scan_num, roi)
+    elif command.startswith(utils.commands['single_frame']):
+        return Frame(prefix, scan_num)
+    else:
+        raise ValueError('Unknown scan type')
+
 class Frame(Measurement):
     mode = 'frame'
     prefix, scan_num = None, None
@@ -109,24 +121,11 @@ class Frame(Measurement):
         datagroup = outfile.create_group('data')
         datagroup.create_dataset('data', data=self.data())
 
-class ScanDefine(object):
-    def __init__(self, prefix, scan_num):
-        self.prefix, self.scan_num = prefix, scan_num
-        self.path = os.path.join(os.path.join(utils.raw_path, utils.prefixes[self.prefix], utils.measpath['scan'].format(self.scan_num)))
-        self.command = utils.scan_command(self.path + '.nxs')
-
-    def Open(self):
-        if self.command.startswith(utils.commands['scan1d']):
-            return Scan1D(self.prefix, self.scan_num)
-        elif self.command.startswith(utils.commands['scan2d']):
-            return Scan2D(self.prefix, self.scan_num)
-        elif self.command.startswith(utils.commands['single_frame']):
-            return Frame(self.prefix, self.scan_num)
-        else:
-            raise ValueError('Unknown scan type')
-
 class Scan(Measurement, metaclass=ABCMeta):
     mode = 'scan'
+
+    @abstractproperty
+    def roi(self): pass
 
     @abstractproperty
     def fast_size(self): pass
@@ -156,37 +155,37 @@ class Scan(Measurement, metaclass=ABCMeta):
         return np.concatenate(_data_list, axis=0)
 
     def flatfield_data(self, flatfield_num, data=None):
-        flatfield_scan = ScanDefine(self.prefix, flatfield_num).Open()
+        flatfield_scan = OpenScan(self.prefix, flatfield_num, self.roi)
         flatfield = np.mean(flatfield_scan.data(), axis=0)
         return FlatfieldData(self.data() if data is None else data, flatfield)
 
-    def peaks(self, flatfield_num, mask, roi, data=None):
-        flatfield_scan = ScanDefine(self.prefix, flatfield_num).Open()
+    def peaks(self, flatfield_num, mask, data=None):
+        flatfield_scan = OpenScan(self.prefix, flatfield_num, self.roi)
         flatfield = np.mean(flatfield_scan.data(), axis=0)
-        return Peaks(self.data() if data is None else data, flatfield, mask, roi)
+        return Peaks(self.data() if data is None else data, flatfield, mask, self.roi)
 
-    def _save_data(self, outfile, roi=None, data=None):
+    def _save_data(self, outfile, data=None):
         data = self.data() if data is None else data
         datagroup = outfile.create_group('data')
         datagroup.create_dataset('data', data=data, compression='gzip')
         datagroup.create_dataset('fs_coordinates', data=self.fast_crds)
-        if roi: datagroup.create_dataset('mask', data=roi.mask(data.shape), compression='gzip') 
+        datagroup.create_dataset('mask', data=self.roi.mask(data.shape), compression='gzip') 
 
-    def save_corrected(self, flatfield_num, roi=None):
+    def save_corrected(self, flatfield_num):
         outfile = self._create_outfile(tag='corrected')
         self._save_parameters(outfile)
         data = self.data()
-        self._save_data(outfile, roi, data)
+        self._save_data(outfile, data)
         cordata = self.flatfield_data(flatfield_num, data)
         cordata.save(outfile)
         outfile.close()
 
-    def save_peaks(self, flatfield_num, mask, roi):
+    def save_peaks(self, flatfield_num, mask):
         outfile = self._create_outfile(tag='peaks')
         self._save_parameters(outfile)
         data = self.data()
-        self._save_data(outfile, roi, data)
-        peaks = self.peaks(flatfield_num, mask, roi, data)
+        self._save_data(outfile, data)
+        peaks = self.peaks(flatfield_num, mask, data)
         peaks.save(outfile)
         outfile.close()
 
@@ -249,26 +248,26 @@ class Peaks(object):
         datagroup.create_dataset('framesum', data=self.subtracted_data().sum(axis=0), compression='gzip')
 
 class Scan1D(Scan):
-    prefix, scan_num, fast_size, fast_crds = None, None, None, None
+    prefix, scan_num, fast_size, fast_crds, roi = None, None, None, None, None
 
-    def __init__(self, prefix, scan_num):
-        self.prefix, self.scan_num = prefix, scan_num
+    def __init__(self, prefix, scan_num, roi=utils.fullroi):
+        self.prefix, self.scan_num, self.roi = prefix, scan_num, roi
         self.fast_crds, self.fast_size = utils.coordinates(self.command)
 
 class Scan2D(Scan):
-    prefix, scan_num, fast_size, fast_crds = None, None, None, None
+    prefix, scan_num, fast_size, fast_crds, roi = None, None, None, None, None
 
-    def __init__(self, prefix, scan_num):
-        self.prefix, self.scan_num = prefix, scan_num
+    def __init__(self, prefix, scan_num, roi=utils.fullroi):
+        self.prefix, self.scan_num, self.roi = prefix, scan_num, roi
         self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
 
     @property
     def size(self): return (self.slow_size, self.fast_size)
 
-    def _save_data(self, outfile, roi=None, data=None):
+    def _save_data(self, outfile, data=None):
         data = self.data() if data is None else data
         datagroup = outfile.create_group('data')
         datagroup.create_dataset('data', data=data, compression='gzip')
         datagroup.create_dataset('fs_coordinates', data=self.fast_crds)
         datagroup.create_dataset('ss_coordinates', data=self.slow_crds)
-        if roi: datagroup.create_dataset('mask', data=roi.mask(data.shape), compression='gzip') 
+        datagroup.create_dataset('mask', data=self.roi.mask(data.shape), compression='gzip') 
