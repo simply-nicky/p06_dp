@@ -1,12 +1,28 @@
-import os, numpy as np, h5py, sys, concurrent.futures
+import os, numpy as np, h5py, concurrent.futures
 from . import utils
 from abc import ABCMeta, abstractmethod, abstractproperty
 from multiprocessing import cpu_count
+from scipy.ndimage.filters import median_filter
+from skimage.transform import probabilistic_hough_line
 
 try:
     from PyQt5 import QtCore, QtGui
 except ImportError:
     from PyQt4 import QtCore, QtGui
+
+class ROI(object):
+    def __init__(self, roi):
+        self.roi = roi
+
+    def __bool__(self): return True
+
+    def toslice(self):
+        return (slice(None), slice(self.roi[0], self.roi[1]), slice(self.roi[2], self.roi[3]))
+
+    def mask(self, shape):
+        _mask = np.zeros(shape, dtype=np.int64)
+        _mask[self.toslice()] = 1
+        return _mask
 
 class Measurement(metaclass=ABCMeta):
     @abstractproperty
@@ -18,20 +34,14 @@ class Measurement(metaclass=ABCMeta):
     @abstractproperty
     def prefix(self): pass
 
-    @abstractproperty
-    def filename(self): pass
-
-    @abstractmethod
-    def _save_data(self, outfile, data=None): pass
-
     @abstractmethod
     def size(self): pass
 
     @abstractmethod
-    def data_chunk(self, paths): pass
+    def data(self, paths): pass
 
     @abstractmethod
-    def _save_parameters(self, outfile): pass
+    def _save_data(self, outfile): pass
 
     @property
     def path(self):
@@ -59,6 +69,81 @@ class Measurement(metaclass=ABCMeta):
         try: exposure = float(parts[-1])
         except: exposure = float(parts[-2])
         return exposure
+    
+    def filename(self, tag): return utils.filename[self.mode].format(tag, self.scan_num)
+
+    def _create_outfile(self, tag):
+        self.outpath = os.path.join(os.path.dirname(__file__), utils.outpath[self.mode].format(self.scan_num))
+        utils.make_output_dir(self.outpath)
+        return h5py.File(os.path.join(self.outpath, self.filename(tag)), 'w')
+    
+    def _save_parameters(self, outfile):
+        arggroup = outfile.create_group('arguments')
+        arggroup.create_dataset('experiment',data=self.prefix)
+        arggroup.create_dataset('scan mode', data=self.__class__.__name__)
+        arggroup.create_dataset('scan number', data=self.scan_num)
+        arggroup.create_dataset('raw path', data=self.path)
+        arggroup.create_dataset('command', data=self.command)
+        arggroup.create_dataset('energy', data=self.energy)
+        arggroup.create_dataset('exposure', data=self.exposure)
+
+    def save_raw(self):
+        outfile = self._create_outfile(tag='raw')
+        self._save_parameters(outfile)
+        self._save_data(outfile)
+        outfile.close()
+
+class Frame(Measurement):
+    mode = 'frame'
+    prefix, scan_num = None, None
+
+    def size(self): return (1,)
+
+    def __init__(self, prefix, scan_num):
+        self.prefix, self.scan_num = prefix, scan_num
+
+    def data(self):
+        return np.mean(h5py.File(os.path.join(self.datapath, 'count_{0:05d}_{1:06d}'.format(self.scan_num, 1)), 'r')[utils.datapath][:], axis=0)
+
+    def _save_data(self, outfile):
+        datagroup = outfile.create_group('data')
+        datagroup.create_dataset('data', data=self.data())
+
+class ScanDefine(object):
+    def __init__(self, prefix, scan_num):
+        self.prefix, self.scan_num = prefix, scan_num
+        self.path = os.path.join(os.path.join(utils.raw_path, utils.prefixes[self.prefix], utils.measpath['scan'].format(self.scan_num)))
+        self.command = utils.scan_command(self.path + '.nxs')
+
+    def Open(self):
+        if self.command.startswith(utils.commands['scan1d']):
+            return Scan1D(self.prefix, self.scan_num)
+        elif self.command.startswith(utils.commands['scan2d']):
+            return Scan2D(self.prefix, self.scan_num)
+        elif self.command.startswith(utils.commands['single_frame']):
+            return Frame(self.prefix, self.scan_num)
+        else:
+            raise ValueError('Unknown scan type')
+
+class Scan(Measurement, metaclass=ABCMeta):
+    mode = 'scan'
+
+    @abstractproperty
+    def fast_size(self): pass
+
+    @abstractproperty
+    def fast_crds(self): pass
+
+    @property
+    def size(self): return (self.fast_size,)
+
+    def data_chunk(self, paths):
+        data_list = []
+        for path in paths:
+            with h5py.File(path, 'r') as datafile:
+                try: data_list.append(np.multiply(utils.mask, np.mean(datafile[utils.datapath][:], axis=0)))
+                except KeyError: continue
+        return None if not data_list else np.stack(data_list, axis=0)
 
     def data(self):
         _paths = np.sort(np.array([os.path.join(self.datapath, filename) for filename in os.listdir(self.datapath) if not filename.endswith('master.h5')], dtype=object))
@@ -70,197 +155,107 @@ class Measurement(metaclass=ABCMeta):
                     _data_list.append(_data_chunk)
         return np.concatenate(_data_list, axis=0)
 
-    def show(self, data=None, levels=(0, 100)):
-        _app = QtGui.QApplication([])
-        _viewer = utils.Viewer(data=self.data() if data is None else data, label=self.path, levels=levels)
-        if sys.flags.interactive != 1 or not hasattr(QtCore, 'PYQT_VERSION'):
-            _app.exec_()
+    def flatfield_data(self, flatfield_num, data=None):
+        flatfield_scan = ScanDefine(self.prefix, flatfield_num).Open()
+        flatfield = np.mean(flatfield_scan.data(), axis=0)
+        return FlatfieldData(self.data() if data is None else data, flatfield)
 
-    def _create_outfile(self):
-        self.outpath = os.path.join(os.path.dirname(__file__), utils.outpath[self.mode].format(self.scan_num))
-        utils.make_output_dir(self.outpath)
-        return h5py.File(os.path.join(self.outpath, self.filename), 'w')
-    
-    def _save_data(self, outfile, data=None):
+    def peaks(self, flatfield_num, mask, roi, data=None):
+        flatfield_scan = ScanDefine(self.prefix, flatfield_num).Open()
+        flatfield = np.mean(flatfield_scan.data(), axis=0)
+        return Peaks(self.data() if data is None else data, flatfield, mask, roi)
+
+    def _save_data(self, outfile, roi=None, data=None):
+        data = self.data() if data is None else data
         datagroup = outfile.create_group('data')
-        datagroup.create_dataset('data', data=self.data() if data is None else data)
+        datagroup.create_dataset('data', data=data, compression='gzip')
+        datagroup.create_dataset('fs_coordinates', data=self.fast_crds)
+        if roi: datagroup.create_dataset('mask', data=roi.mask(data.shape), compression='gzip') 
 
-    def save(self):
-        outfile = self._create_outfile()
+    def save_corrected(self, flatfield_num, roi=None):
+        outfile = self._create_outfile(tag='corrected')
         self._save_parameters(outfile)
-        self._save_data(outfile)
+        data = self.data()
+        self._save_data(outfile, roi, data)
+        cordata = self.flatfield_data(flatfield_num, data)
+        cordata.save(outfile)
         outfile.close()
 
-class FullMeasurement(Measurement, metaclass=ABCMeta):
-    @property
-    def filename(self): return utils.fullfilename[self.mode].format(self.scan_num)
+    def save_peaks(self, flatfield_num, mask, roi):
+        outfile = self._create_outfile(tag='peaks')
+        self._save_parameters(outfile)
+        data = self.data()
+        self._save_data(outfile, roi, data)
+        peaks = self.peaks(flatfield_num, mask, roi, data)
+        peaks.save(outfile)
+        outfile.close()
 
-    def data_chunk(self, paths):
-        data_list = []
-        for path in paths:
-            with h5py.File(path, 'r') as datafile:
-                try: data_list.append(np.multiply(utils.mask, np.mean(datafile[utils.datapath][:], axis=0)))
-                except KeyError: continue
-        return None if not data_list else np.stack(data_list, axis=0)
-
-    def _save_parameters(self, outfile):
-        arggroup = outfile.create_group('arguments')
-        arggroup.create_dataset('experiment',data=self.prefix)
-        arggroup.create_dataset('scan mode', data=self.__class__.__name__)
-        arggroup.create_dataset('scan number', data=self.scan_num)
-        arggroup.create_dataset('raw path', data=self.path)
-        arggroup.create_dataset('command', data=self.command)
-        arggroup.create_dataset('energy', data=self.energy)
-        arggroup.create_dataset('exposure', data=self.exposure)
-
-class CropMeasurement(Measurement, metaclass=ABCMeta):
-    @abstractproperty
-    def roi(self): pass
+class FlatfieldData(object):
+    def __init__(self, data, flatfield):
+        self.data, self.flatfield = data, flatfield
 
     @property
-    def roislice(self): return (slice(self.roi[0], self.roi[1]), slice(self.roi[2], self.roi[3]))
+    def corrected_data(self):
+        cordata = self.data - self.flatfield[np.newaxis, :]
+        cordata[cordata < 0] = 0
+        return cordata
 
-    @property
-    def filename(self): return utils.cropfilename[self.mode].format(self.scan_num)
-
-    def data_chunk(self, paths):
-        data_list = []
-        for path in paths:
-            with h5py.File(path, 'r') as datafile:
-                try: data_list.append(np.multiply(utils.mask[self.roislice], np.mean(datafile[utils.datapath][(slice(None),) + self.roislice], axis=0)))
-                except KeyError: continue
-        return None if not data_list else np.stack(data_list, axis=0)
-
-    def _save_parameters(self, outfile):
-        arggroup = outfile.create_group('arguments')
-        arggroup.create_dataset('experiment',data=self.prefix)
-        arggroup.create_dataset('scan mode', data=self.__class__.__name__)
-        arggroup.create_dataset('scan number', data=self.scan_num)
-        arggroup.create_dataset('roi', data=np.array(self.roi))
-        arggroup.create_dataset('raw path', data=self.path)
-        arggroup.create_dataset('command', data=self.command)
-        arggroup.create_dataset('energy', data=self.energy)
-        arggroup.create_dataset('exposure', data=self.exposure)
-
-class FullFrame(FullMeasurement):
-    mode = 'frame'
-    prefix, scan_num = None, None
-
-    def size(self): return (1,)
-
-    def __init__(self, prefix, scan_num):
-        self.prefix, self.scan_num = prefix, scan_num
-
-class CropFrame(CropMeasurement):
-    mode = 'frame'
-    prefix, scan_num, roi = None, None, None
-
-    def size(self): return (1,)
-
-    def __init__(self, prefix, scan_num, roi):
-        self.prefix, self.scan_num, self.roi = prefix, scan_num, roi
-  
-class ScanFactory(object):
-    def __init__(self, prefix, scan_num):
-        self.prefix, self.scan_num = prefix, scan_num
-        self.path = os.path.join(os.path.join(utils.raw_path, utils.prefixes[self.prefix], utils.measpath['scan'].format(self.scan_num)))
-        self.command = utils.scan_command(self.path + '.nxs')
-
-    def OpenFull(self):
-        if self.command.startswith(utils.commands['scan1d']):
-            return FullScan1D(self.prefix, self.scan_num)
-        elif self.command.startswith(utils.commands['scan2d']):
-            return FullScan2D(self.prefix, self.scan_num)
-        else:
-            raise ValueError('Unknown scan type')
-
-    def OpenCrop(self, roi):
-        if self.command.startswith(utils.commands['scan1d']):
-            return CropScan1D(self.prefix, self.scan_num, roi)
-        elif self.command.startswith(utils.commands['scan2d']):
-            return CropScan2D(self.prefix, self.scan_num, roi)
-        else:
-            raise ValueError('Unknown scan type')
-
-class FullScan(FullMeasurement, metaclass=ABCMeta):
-    mode = 'scan'
-
-    @abstractproperty
-    def fast_size(self): pass
-
-    @abstractproperty
-    def fast_crds(self): pass
-
-    @property
-    def size(self): return (self.fast_size,)
-
-    def correct(self, bg_num):
-        bg_scan = ScanFactory(self.prefix, bg_num).OpenFull()
-        flatfield = np.mean(bg_scan.data(), axis=0)
-        return CorrectedScan(self, flatfield)
-
-    def _save_data(self, outfile, data=None):
-        datagroup = outfile.create_group('data')
-        datagroup.create_dataset('fast_coordinates', data=self.fast_crds)
-        datagroup.create_dataset('data', data=self.data() if data is None else data, compression='gzip')
-
-class CropScan(CropMeasurement, metaclass=ABCMeta):
-    mode = 'scan'
-
-    @abstractproperty
-    def fast_size(self): pass
-
-    @abstractproperty
-    def fast_crds(self): pass
-
-    @property
-    def size(self): return (self.fast_size,)
-
-    def correct(self, bg_num):
-        bg_scan = ScanFactory(self.prefix, bg_num).OpenCrop(self.roi)
-        flatfield = np.mean(bg_scan.data(), axis=0)
-        return CorrectedScan(self, flatfield)
-
-    def _save_data(self, outfile, data=None):
-        datagroup = outfile.create_group('data')
-        datagroup.create_dataset('fast_coordinates', data=self.fast_crds)
-        datagroup.create_dataset('data', data=self.data() if data is None else data, compression='gzip')
-
-class CorrectedScan(object):
-    def __init__(self, scan, flatfield):
-        self.scan, self.flatfield = scan, flatfield
-
-    def subtracted_data(self, data=None):
-        return np.subtract(self.scan.data() if data is None else data, self.flatfield[np.newaxis, :])
-
-    def divided_data(self, data=None):
-        return np.divide(self.scan.data() if data is None else data, self.flatfield[np.newaxis, :] + 1)
-
-    def show_divided(self, data=None, levels=(0, 100)):
-        self.scan.show(data=self.divided_data(data=data), levels=levels)
-
-    def show_subtracted(self, data=None, levels=(0, 100)):
-        self.scan.show(data=self.subtracted_data(data=data), levels=levels)
-
-    def save(self):
-        data = self.scan.data()
-        outfile = self.scan._create_outfile()
-        self.scan._save_parameters(outfile)
-        self.scan._save_data(outfile, data=data)
+    def save(self, outfile):
         correct_group = outfile.create_group('corrected_data')
         correct_group.create_dataset('flatfield', data=self.flatfield)
-        correct_group.create_dataset('divided_data', data=self.divided_data(data=data), compression='gzip')
-        correct_group.create_dataset('subtracted_data', data=self.subtracted_data(data=data), compression='gzip')
-        outfile.close()
+        correct_group.create_dataset('corrected_data', data=self.corrected_data, compression='gzip')
 
-class FullScan1D(FullScan):
+class Peaks(object):
+    def __init__(self, data, flatfield, mask, roi):
+        self.data, self.flatfield, self.mask, self.roi = data, flatfield, mask, roi
+
+    @property
+    def cropped_mask(self):
+        return self.mask * self.roi.mask
+
+    def subtracted_data(self):
+        subdata = self.data - self.flatfield[np.newaxis, :]
+        subdata[subdata < 0] = 0
+        return subdata
+
+    def peaks(self, detect_threshold=4, kernel_size=30, finder_threshold=25, line_length=25, line_gap=5, dalpha=0.1, dr=5, order=5):
+        _subdata = self.subtracted_data()[self.roi.toslice()]
+        _cordata = np.where(self.cropped_mask, _subdata, 0)
+        _background = utils.medfilt(_subdata, kernel_size)
+        _diffdata = median_filter(np.where(_cordata - _background > detect_threshold, _cordata, 0), (1, 3, 3))
+        _lineslist, _intslist = [], []
+        for _frame, _rawframe in zip(_diffdata, _subdata):
+            _lines = np.array([[[x0, y0], [x1, y1]]
+                                for (x0, y0), (x1, y1)
+                                in probabilistic_hough_line(_frame, threshold=finder_threshold, line_length=line_length, line_gap=line_gap)])
+            _lines = utils.findlinesrec(_lines, dalpha, dr, order)
+            _ints = utils.peakintensity(_rawframe, _lines)
+            _lineslist.append(_lines + np.array(self.roi[[2, 0]])); _intslist.append(_ints)
+        return _lineslist, _intslist
+
+    def save(self, outfile, detect_threshold=4, kernel_size=30, finder_threshold=25, line_length=25, line_gap=5, dalpha=0.1, dr=5, order=5):
+        _lineslist, _intslist = self.peaks(detect_threshold, kernel_size, finder_threshold, line_length, line_gap, dalpha, dr, order)
+        _peakXPos = np.stack([np.pad(_lines.mean(axis=1)[:, 0], (0, 1024 - _lines.shape[0]), 'constant') for _lines in _lineslist])
+        _peakYPos = np.stack([np.pad(_lines.mean(axis=1)[:, 1], (0, 1024 - _lines.shape[0]), 'constant') for _lines in _lineslist])
+        _peakTotalIntensity = np.stack([np.pad(_ints, (0, 1024 - _ints.shape[0]), 'constant') for _ints in _intslist])
+        _nPeaks = np.array([_lines.shape[0] for _lines in _lineslist])
+        resgroup = outfile.create_group('entry_1/result_1')
+        resgroup.create_dataset('peakXPosRaw', data=_peakXPos)
+        resgroup.create_dataset('peakYPosRaw', data=_peakYPos)
+        resgroup.create_dataset('peakTotalIntensity', data=_peakTotalIntensity)
+        datagroup = outfile.create_group('entry_1/data_1')
+        datagroup.create_dataset('data', data=self.subtracted_data(), compression='gzip')
+        datagroup.create_dataset('mask', data=self.cropped_mask, compression='gzip')
+        datagroup.create_dataset('framesum', data=self.subtracted_data().sum(axis=0), compression='gzip')
+
+class Scan1D(Scan):
     prefix, scan_num, fast_size, fast_crds = None, None, None, None
 
     def __init__(self, prefix, scan_num):
         self.prefix, self.scan_num = prefix, scan_num
         self.fast_crds, self.fast_size = utils.coordinates(self.command)
 
-class FullScan2D(FullScan):
+class Scan2D(Scan):
     prefix, scan_num, fast_size, fast_crds = None, None, None, None
 
     def __init__(self, prefix, scan_num):
@@ -270,31 +265,10 @@ class FullScan2D(FullScan):
     @property
     def size(self): return (self.slow_size, self.fast_size)
 
-    def _save_data(self, outfile, data=None):
+    def _save_data(self, outfile, roi=None, data=None):
+        data = self.data() if data is None else data
         datagroup = outfile.create_group('data')
-        datagroup.create_dataset('fast_coordinates', data=self.fast_crds)
-        datagroup.create_dataset('slow_coordinates', data=self.slow_crds)
-        datagroup.create_dataset('data', data=self.data() if data is None else data, compression='gzip')
-
-class CropScan1D(CropScan):
-    prefix, scan_num, fast_size, fast_crds, roi = None, None, None, None, None
-
-    def __init__(self, prefix, scan_num, roi):
-        self.prefix, self.scan_num, self.roi = prefix, scan_num, roi
-        self.fast_crds, self.fast_size = utils.coordinates(self.command)
-
-class CropScan2D(CropScan):
-    prefix, scan_num, fast_size, fast_crds, roi = None, None, None, None, None
-
-    def __init__(self, prefix, scan_num, roi):
-        self.prefix, self.scan_num, self.roi = prefix, scan_num, roi
-        self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
-
-    @property
-    def size(self): return (self.slow_size, self.fast_size)
-
-    def _save_data(self, outfile, data=None):
-        datagroup = outfile.create_group('data')
-        datagroup.create_dataset('fast_coordinates', data=self.fast_crds)
-        datagroup.create_dataset('slow_coordinates', data=self.slow_crds)
-        datagroup.create_dataset('data', data=self.data() if data is None else data, compression='gzip')
+        datagroup.create_dataset('data', data=data, compression='gzip')
+        datagroup.create_dataset('fs_coordinates', data=self.fast_crds)
+        datagroup.create_dataset('ss_coordinates', data=self.slow_crds)
+        if roi: datagroup.create_dataset('mask', data=roi.mask(data.shape), compression='gzip') 
