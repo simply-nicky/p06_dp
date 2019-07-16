@@ -171,7 +171,7 @@ class CorrectedData(object):
     def corrected_data(self):
         cordata = np.subtract(self.data, self.flatfield[np.newaxis, :], dtype=np.int64)
         cordata[cordata < 0] = 0
-        return cordata.astype(np.uint32)
+        return cordata.astype(np.uint64)
 
     def save(self, outfile):
         correct_group = outfile.create_group('corrected_data')
