@@ -116,7 +116,7 @@ class Scan(Measurement, metaclass=ABCMeta):
         data_list = []
         for path in paths:
             with h5py.File(path, 'r') as datafile:
-                try: data_list.append(np.multiply(utils.hotmask, datafile[utils.datapath][:].sum(axis=0)))
+                try: data_list.append(np.multiply(utils.hotmask, datafile[utils.datapath][:].sum(axis=0), dtype=np.uint32))
                 except KeyError: continue
         return None if not data_list else np.stack(data_list, axis=0)
 
