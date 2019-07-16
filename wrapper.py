@@ -38,7 +38,7 @@ class Measurement(metaclass=ABCMeta):
 
     @property
     def datapath(self):
-        return os.path.join(self.path, utils.datafilepath)
+        return os.path.join(self.path, utils.datafolder)
 
     @property
     def energy(self):
@@ -87,13 +87,16 @@ def OpenScan(prefix, scan_num):
 class Frame(Measurement):
     prefix, scan_num, mode = None, None, None
 
+    def datafilename(self, framenum):
+        return utils.datafilename[self.mode].format(self.scan_num, framenum)
+
     def size(self): return (1,)
 
     def __init__(self, prefix, scan_num, mode='frame'):
         self.prefix, self.scan_num, self.mode = prefix, scan_num, mode
 
-    def data(self, num=1):
-        return h5py.File(os.path.join(self.datapath, 'count_{0:05d}_data_{1:06d}.h5'.format(self.scan_num, num)), 'r')[utils.datapath][:].sum(axis=0, dtype=np.uint64)
+    def data(self, framenum=1):
+        return h5py.File(os.path.join(self.datapath, self.datafilename(framenum)), 'r')[utils.datapath][:].sum(axis=0, dtype=np.uint64)
 
     def _save_data(self, outfile):
         datagroup = outfile.create_group('data')
