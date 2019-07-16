@@ -129,10 +129,10 @@ class Scan(Measurement, metaclass=ABCMeta):
                     _data_list.append(_data_chunk)
         return np.concatenate(_data_list, axis=0)
 
-    def flatfield_data(self, ffnum, data=None):
+    def corrected_data(self, ffnum, data=None):
         ffscan = Frame(self.prefix, ffnum)
         flatfield = ffscan.data()
-        return FlatfieldData(self.data() if data is None else data, flatfield)
+        return CorrectedData(self.data() if data is None else data, flatfield)
 
     def peaks(self, ffnum, sample, data=None):
         ffscan = Frame(self.prefix, ffnum, 'scan')
@@ -145,33 +145,33 @@ class Scan(Measurement, metaclass=ABCMeta):
         datagroup.create_dataset('data', data=data, compression='gzip')
         datagroup.create_dataset('fs_coordinates', data=self.fast_crds)
 
-    def save_corrected(self, flatfield_num):
+    def save_corrected(self, ffnum):
         outfile = self._create_outfile(tag='corrected')
         self._save_parameters(outfile)
         data = self.data()
         self._save_data(outfile, data)
-        cordata = self.flatfield_data(flatfield_num, data)
+        cordata = self.corrected_data(ffnum, data)
         cordata.save(outfile)
         outfile.close()
 
-    def save_peaks(self, flatfield_num, sample):
+    def save_peaks(self, ffnum, sample):
         outfile = self._create_outfile(tag='peaks')
         self._save_parameters(outfile)
         data = self.data()
         self._save_data(outfile, data)
-        peaks = self.peaks(flatfield_num, sample, data)
+        peaks = self.peaks(ffnum, sample, data)
         peaks.save(outfile)
         outfile.close()
 
-class FlatfieldData(object):
+class CorrectedData(object):
     def __init__(self, data, flatfield):
         self.data, self.flatfield = data, flatfield
 
     @property
     def corrected_data(self):
-        cordata = self.data - self.flatfield[np.newaxis, :]
+        cordata = np.subtract(self.data, self.flatfield[np.newaxis, :], dtype=np.int64)
         cordata[cordata < 0] = 0
-        return cordata
+        return cordata.astype(np.uint32)
 
     def save(self, outfile):
         correct_group = outfile.create_group('corrected_data')
