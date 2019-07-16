@@ -18,7 +18,6 @@ outpath = {'scan': "../results/scan_{0:05d}", 'frame': "../results/count_{0:05d}
 filename = {'scan': "scan_{0:s}_{1:05d}.h5", 'frame': "count_{0:s}_{1:05d}.h5"}
 commands = {'single_frame': ('cnt', 'ct'), 'scan1d': ('dscan', 'ascan'), 'scan2d': ('dmesh', 'cmesh')}
 mask = {'lys': np.load(os.path.join(os.path.dirname(__file__), 'lys_mask.npy')).astype(np.int), 'b12': np.load(os.path.join(os.path.dirname(__file__), 'b12_mask.npy')).astype(np.int)}
-roi = {'lys': np.array([500, 1767, 800, 2070]), 'b12': np.array([700, 2167, 600, 2070])}
 zero = {'lys': np.array([1010, 925]), 'b12': np.array([665, 680])}
 fullroi = np.array([0, 2167, 0, 2070])
 

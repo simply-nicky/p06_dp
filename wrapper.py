@@ -5,20 +5,6 @@ from multiprocessing import cpu_count
 from scipy.ndimage.filters import median_filter
 from skimage.transform import probabilistic_hough_line
 
-class ROI(object):
-    def __init__(self, roi):
-        self.roi = roi
-
-    def __bool__(self): return True
-
-    def toslice(self):
-        return (slice(None), slice(self.roi[0], self.roi[1]), slice(self.roi[2], self.roi[3]))
-
-    def mask(self, shape):
-        _mask = np.zeros(shape, dtype=np.int64)
-        _mask[self.toslice()] = 1
-        return _mask
-
 class Measurement(metaclass=ABCMeta):
     @abstractproperty
     def mode(self): pass
@@ -88,13 +74,13 @@ class Measurement(metaclass=ABCMeta):
         self._save_data(outfile)
         outfile.close()
 
-def OpenScan(prefix, scan_num, roi=utils.fullroi):
+def OpenScan(prefix, scan_num):
     path = os.path.join(os.path.join(utils.raw_path, utils.prefixes[prefix], utils.measpath['scan'].format(scan_num)))
     command = utils.scan_command(path + '.nxs')
     if command.startswith(utils.commands['scan1d']):
-        return Scan1D(prefix, scan_num, roi)
+        return Scan1D(prefix, scan_num)
     elif command.startswith(utils.commands['scan2d']):
-        return Scan2D(prefix, scan_num, roi)
+        return Scan2D(prefix, scan_num)
     else:
         raise ValueError('Unknown scan type')
 
@@ -118,22 +104,10 @@ class Scan(Measurement, metaclass=ABCMeta):
     mode = 'scan'
 
     @abstractproperty
-    def sample(self): pass
-
-    @abstractproperty
     def fast_size(self): pass
 
     @abstractproperty
     def fast_crds(self): pass
-
-    @property
-    def roi(self): return utils.roi[self.sample]
-
-    @property
-    def zero(self): return utils.zero[self.sample]
-
-    @property
-    def mask(self): return utils.mask[self.sample]
 
     @property
     def size(self): return (self.fast_size,)
@@ -142,7 +116,7 @@ class Scan(Measurement, metaclass=ABCMeta):
         data_list = []
         for path in paths:
             with h5py.File(path, 'r') as datafile:
-                try: data_list.append(np.multiply(utils.hotmask, np.mean(datafile[utils.datapath][:], axis=0)))
+                try: data_list.append(np.multiply(utils.hotmask, datafile[utils.datapath][:].sum(axis=0)))
                 except KeyError: continue
         return None if not data_list else np.stack(data_list, axis=0)
 
@@ -157,21 +131,20 @@ class Scan(Measurement, metaclass=ABCMeta):
         return np.concatenate(_data_list, axis=0)
 
     def flatfield_data(self, flatfield_num, data=None):
-        flatfield_scan = OpenScan(self.prefix, flatfield_num, self.roi)
+        flatfield_scan = OpenScan(self.prefix, flatfield_num)
         flatfield = np.mean(flatfield_scan.data(), axis=0)
         return FlatfieldData(self.data() if data is None else data, flatfield)
 
-    def peaks(self, flatfield_num, data=None):
-        flatfield_scan = OpenScan(self.prefix, flatfield_num, self.roi)
+    def peaks(self, flatfield_num, sample, data=None):
+        flatfield_scan = OpenScan(self.prefix, flatfield_num)
         flatfield = np.mean(flatfield_scan.data(), axis=0)
-        return Peaks(self.data() if data is None else data, flatfield, self.mask, self.roi, self.zero)
+        return Peaks(self.data() if data is None else data, flatfield, utils.mask[sample], utils.zero[sample])
 
     def _save_data(self, outfile, data=None):
         data = self.data() if data is None else data
         datagroup = outfile.create_group('data')
         datagroup.create_dataset('data', data=data, compression='gzip')
         datagroup.create_dataset('fs_coordinates', data=self.fast_crds)
-        datagroup.create_dataset('mask', data=self.roi.mask(data.shape), compression='gzip') 
 
     def save_corrected(self, flatfield_num):
         outfile = self._create_outfile(tag='corrected')
@@ -182,12 +155,12 @@ class Scan(Measurement, metaclass=ABCMeta):
         cordata.save(outfile)
         outfile.close()
 
-    def save_peaks(self, flatfield_num, mask):
+    def save_peaks(self, flatfield_num, sample):
         outfile = self._create_outfile(tag='peaks')
         self._save_parameters(outfile)
         data = self.data()
         self._save_data(outfile, data)
-        peaks = self.peaks(flatfield_num, data)
+        peaks = self.peaks(flatfield_num, sample, data)
         peaks.save(outfile)
         outfile.close()
 
@@ -207,12 +180,8 @@ class FlatfieldData(object):
         correct_group.create_dataset('corrected_data', data=self.corrected_data, compression='gzip')
 
 class Peaks(object):
-    def __init__(self, data, flatfield, mask, roi, zero):
-        self.data, self.flatfield, self.mask, self.roi, self.zero = data, flatfield, mask, roi, zero
-
-    @property
-    def cropped_mask(self):
-        return self.mask * self.roi.mask
+    def __init__(self, data, flatfield, mask, zero):
+        self.data, self.flatfield, self.mask, self.zero = data, flatfield, mask, zero
 
     def subtracted_data(self):
         subdata = self.data - self.flatfield[np.newaxis, :]
@@ -220,10 +189,9 @@ class Peaks(object):
         return subdata
 
     def peaks(self, detect_threshold=4, kernel_size=30, finder_threshold=25, line_length=25, line_gap=5, dalpha=0.1, dr=5, order=5):
-        _subdata = self.subtracted_data()[self.roi.toslice()]
-        _cordata = np.where(self.cropped_mask, _subdata, 0)
+        _subdata = self.subtracted_data() * self.mask
         _background = utils.medfilt(_subdata, kernel_size)
-        _diffdata = median_filter(np.where(_cordata - _background > detect_threshold, _cordata, 0), (1, 3, 3))
+        _diffdata = median_filter(np.where(_subdata - _background > detect_threshold, _subdata, 0), (1, 3, 3))
         _lineslist, _intslist = [], []
         for _frame, _rawframe in zip(_diffdata, _subdata):
             _lines = np.array([[[x0, y0], [x1, y1]]
@@ -231,7 +199,7 @@ class Peaks(object):
                                 in probabilistic_hough_line(_frame, threshold=finder_threshold, line_length=line_length, line_gap=line_gap)])
             _lines = utils.findlinesrec(_lines, self.zero, dalpha, dr, order)
             _ints = utils.peakintensity(_rawframe, _lines)
-            _lineslist.append(_lines + np.array(self.roi[[2, 0]])); _intslist.append(_ints)
+            _lineslist.append(_lines); _intslist.append(_ints)
         return _lineslist, _intslist
 
     def save(self, outfile, detect_threshold=4, kernel_size=30, finder_threshold=25, line_length=25, line_gap=5, dalpha=0.1, dr=5, order=5):
@@ -246,21 +214,21 @@ class Peaks(object):
         resgroup.create_dataset('peakTotalIntensity', data=_peakTotalIntensity)
         datagroup = outfile.create_group('entry_1/data_1')
         datagroup.create_dataset('data', data=self.subtracted_data(), compression='gzip')
-        datagroup.create_dataset('mask', data=self.cropped_mask, compression='gzip')
+        datagroup.create_dataset('mask', data=self.mask, compression='gzip')
         datagroup.create_dataset('framesum', data=self.subtracted_data().sum(axis=0), compression='gzip')
 
 class Scan1D(Scan):
-    prefix, scan_num, fast_size, fast_crds, sample = None, None, None, None, None
+    prefix, scan_num, fast_size, fast_crds = None, None, None, None
 
-    def __init__(self, prefix, scan_num, sample):
-        self.prefix, self.scan_num, self.sample = prefix, scan_num, sample
+    def __init__(self, prefix, scan_num):
+        self.prefix, self.scan_num = prefix, scan_num
         self.fast_crds, self.fast_size = utils.coordinates(self.command)
 
 class Scan2D(Scan):
-    prefix, scan_num, fast_size, fast_crds, sample = None, None, None, None, None
+    prefix, scan_num, fast_size, fast_crds = None, None, None, None
 
-    def __init__(self, prefix, scan_num, sample):
-        self.prefix, self.scan_num, self.sample = prefix, scan_num, sample
+    def __init__(self, prefix, scan_num):
+        self.prefix, self.scan_num = prefix, scan_num
         self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
 
     @property
@@ -272,4 +240,3 @@ class Scan2D(Scan):
         datagroup.create_dataset('data', data=data, compression='gzip')
         datagroup.create_dataset('fs_coordinates', data=self.fast_crds)
         datagroup.create_dataset('ss_coordinates', data=self.slow_crds)
-        datagroup.create_dataset('mask', data=self.roi.mask(data.shape), compression='gzip') 
