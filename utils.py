@@ -7,7 +7,7 @@ from skimage.draw import line_aa
 
 raw_path = "/asap3/petra3/gpfs/p06/2019/data/11006252/raw"
 prefixes = {'alignment': '0001_alignment', 'opal': '0001_opal', 'b12_1': '0002_b12_1', 'b12_2': '0002_b12_2'}
-hotmask = np.load(os.path.join(os.path.dirname(__file__), "P06_mask.npy")).astype(np.int)
+hotmask = np.load(os.path.join(os.path.dirname(__file__), "P06_mask.npy"))
 measpath = {'scan': "scan_{0:05d}", "frame": "count_{0:05d}"}
 datafilepath = "eiger4m_01"
 nxspath = "/scan/program_name"
@@ -17,7 +17,7 @@ energypath = "scan/data/energy"
 outpath = {'scan': "../results/scan_{0:05d}", 'frame': "../results/count_{0:05d}"}
 filename = {'scan': "scan_{0:s}_{1:05d}.h5", 'frame': "count_{0:s}_{1:05d}.h5"}
 commands = {'single_frame': ('cnt', 'ct'), 'scan1d': ('dscan', 'ascan'), 'scan2d': ('dmesh', 'cmesh')}
-mask = {'lys': np.load(os.path.join(os.path.dirname(__file__), 'lys_mask.npy')).astype(np.int), 'b12': np.load(os.path.join(os.path.dirname(__file__), 'b12_mask.npy')).astype(np.int)}
+mask = {'lys': np.load(os.path.join(os.path.dirname(__file__), 'lys_mask.npy')), 'b12': np.load(os.path.join(os.path.dirname(__file__), 'b12_mask.npy'))}
 zero = {'lys': np.array([1010, 925]), 'b12': np.array([665, 680])}
 fullroi = np.array([0, 2167, 0, 2070])
 
