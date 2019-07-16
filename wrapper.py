@@ -85,16 +85,15 @@ def OpenScan(prefix, scan_num):
         raise ValueError('Unknown scan type')
 
 class Frame(Measurement):
-    mode = 'frame'
-    prefix, scan_num = None, None
+    prefix, scan_num, mode = None, None, None
 
     def size(self): return (1,)
 
-    def __init__(self, prefix, scan_num):
-        self.prefix, self.scan_num = prefix, scan_num
+    def __init__(self, prefix, scan_num, mode='frame'):
+        self.prefix, self.scan_num, self.mode = prefix, scan_num, mode
 
-    def data(self):
-        return np.mean(h5py.File(os.path.join(self.datapath, 'count_{0:05d}_data_{1:06d}.h5'.format(self.scan_num, 1)), 'r')[utils.datapath][:], axis=0)
+    def data(self, num=1):
+        return h5py.File(os.path.join(self.datapath, 'count_{0:05d}_data_{1:06d}.h5'.format(self.scan_num, num)), 'r')[utils.datapath][:].sum(axis=0, dtype=np.uint64)
 
     def _save_data(self, outfile):
         datagroup = outfile.create_group('data')
@@ -116,7 +115,7 @@ class Scan(Measurement, metaclass=ABCMeta):
         data_list = []
         for path in paths:
             with h5py.File(path, 'r') as datafile:
-                try: data_list.append(np.multiply(utils.hotmask, datafile[utils.datapath][:].sum(axis=0), dtype=np.uint32))
+                try: data_list.append(np.multiply(utils.hotmask, datafile[utils.datapath][:].sum(axis=0, dtype=np.uint64)))
                 except KeyError: continue
         return None if not data_list else np.stack(data_list, axis=0)
 
@@ -130,14 +129,14 @@ class Scan(Measurement, metaclass=ABCMeta):
                     _data_list.append(_data_chunk)
         return np.concatenate(_data_list, axis=0)
 
-    def flatfield_data(self, flatfield_num, data=None):
-        flatfield_scan = OpenScan(self.prefix, flatfield_num)
-        flatfield = flatfield_scan.data().sum(axis=0)
+    def flatfield_data(self, ffnum, data=None):
+        ffscan = Frame(self.prefix, ffnum)
+        flatfield = ffscan.data()
         return FlatfieldData(self.data() if data is None else data, flatfield)
 
-    def peaks(self, flatfield_num, sample, data=None):
-        flatfield_scan = OpenScan(self.prefix, flatfield_num)
-        flatfield = np.mean(flatfield_scan.data(), axis=0)
+    def peaks(self, ffnum, sample, data=None):
+        ffscan = Frame(self.prefix, ffnum, 'scan')
+        flatfield = np.mean(ffscan.data(), axis=0)
         return Peaks(self.data() if data is None else data, flatfield, utils.mask[sample], utils.zero[sample])
 
     def _save_data(self, outfile, data=None):
