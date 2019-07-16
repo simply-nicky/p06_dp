@@ -95,8 +95,6 @@ def OpenScan(prefix, scan_num, roi=utils.fullroi):
         return Scan1D(prefix, scan_num, roi)
     elif command.startswith(utils.commands['scan2d']):
         return Scan2D(prefix, scan_num, roi)
-    elif command.startswith(utils.commands['single_frame']):
-        return Frame(prefix, scan_num)
     else:
         raise ValueError('Unknown scan type')
 
@@ -110,7 +108,7 @@ class Frame(Measurement):
         self.prefix, self.scan_num = prefix, scan_num
 
     def data(self):
-        return np.mean(h5py.File(os.path.join(self.datapath, 'count_{0:05d}_{1:06d}'.format(self.scan_num, 1)), 'r')[utils.datapath][:], axis=0)
+        return np.mean(h5py.File(os.path.join(self.datapath, 'count_{0:05d}_data_{1:06d}'.format(self.scan_num, 1)), 'r')[utils.datapath][:], axis=0)
 
     def _save_data(self, outfile):
         datagroup = outfile.create_group('data')
