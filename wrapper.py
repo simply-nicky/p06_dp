@@ -132,7 +132,7 @@ class Scan(Measurement, metaclass=ABCMeta):
 
     def flatfield_data(self, flatfield_num, data=None):
         flatfield_scan = OpenScan(self.prefix, flatfield_num)
-        flatfield = np.mean(flatfield_scan.data(), axis=0)
+        flatfield = flatfield_scan.data().sum(axis=0)
         return FlatfieldData(self.data() if data is None else data, flatfield)
 
     def peaks(self, flatfield_num, sample, data=None):
