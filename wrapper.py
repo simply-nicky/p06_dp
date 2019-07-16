@@ -108,7 +108,7 @@ class Frame(Measurement):
         self.prefix, self.scan_num = prefix, scan_num
 
     def data(self):
-        return np.mean(h5py.File(os.path.join(self.datapath, 'count_{0:05d}_data_{1:06d}'.format(self.scan_num, 1)), 'r')[utils.datapath][:], axis=0)
+        return np.mean(h5py.File(os.path.join(self.datapath, 'count_{0:05d}_data_{1:06d}.h5'.format(self.scan_num, 1)), 'r')[utils.datapath][:], axis=0)
 
     def _save_data(self, outfile):
         datagroup = outfile.create_group('data')
