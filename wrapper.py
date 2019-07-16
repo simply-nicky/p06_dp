@@ -133,7 +133,7 @@ class Scan(Measurement, metaclass=ABCMeta):
         return np.concatenate(_data_list, axis=0)
 
     def corrected_data(self, ffnum, data=None):
-        ffscan = Frame(self.prefix, ffnum)
+        ffscan = Frame(self.prefix, ffnum, 'scan')
         flatfield = ffscan.data()
         return CorrectedData(self.data() if data is None else data, flatfield)
 
