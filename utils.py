@@ -5,11 +5,6 @@ from multiprocessing import cpu_count
 from scipy.ndimage.filters import median_filter
 from skimage.draw import line_aa
 
-try:
-    from PyQt5 import QtCore, QtGui
-except ImportError:
-    from PyQt4 import QtCore, QtGui
-
 raw_path = "/asap3/petra3/gpfs/p06/2019/data/11006252/raw"
 prefixes = {'alignment': '0001_alignment', 'opal': '0001_opal', 'b12_1': '0002_b12_1', 'b12_2': '0002_b12_2'}
 mask = np.load(os.path.join(os.path.dirname(__file__), "P06_mask.npy")).astype(np.int)
@@ -50,42 +45,14 @@ def get_attributes(command):
     return tuple(nums[:-1])
 
 def coordinates(command):
-    start, stop, steps = get_attributes(command)
-    return np.linspace(start, stop, int(steps) + 1), int(steps) + 1
+    nums = get_attributes(command)
+    return np.linspace(nums[0], nums[1], int(nums[2]) + 1), int(nums[2]) + 1
 
 def coordinates2d(command):
-    start0, stop0, steps0, start1, stop1, steps1 = get_attributes(command)
-    fast_crds = np.linspace(start0, stop0, int(steps0) + 1, endpoint=True)
-    slow_crds = np.linspace(start1, stop1, int(steps1) + 1, endpoint=True)
-    return fast_crds, int(steps0) + 1, slow_crds, int(steps1) + 1
-
-class Viewer(QtGui.QMainWindow):
-    def __init__(self, data, label, levels, parent=None, size=(640, 480)):
-        super(Viewer, self).__init__(parent=parent, size=QtCore.QSize(size[0], size[1]))
-        self.setWindowTitle('CBC Viewer')
-        self.update_ui(data, label, levels)
-
-        self.central_widget = QtGui.QWidget()
-        self.central_widget.setLayout(self.layout)
-        self.setCentralWidget(self.central_widget)
-
-        self.show()
-
-    def update_ui(self, data, label, levels):
-        self.layout = QtGui.QVBoxLayout()
-        _label_widget = QtGui.QLabel(label)
-        _label_widget.setAlignment(QtCore.Qt.AlignCenter)
-        self.layout.addWidget(_label_widget)
-        _image_view = pg.ImageView()
-        _image_view.setPredefinedGradient('thermal')
-        _image_view.setImage(img=data, levels=levels)
-        self.layout.addWidget(_image_view)
-
-def show_data(self, data, label, levels=(0, 100)):
-    _app = QtGui.QApplication([])
-    _viewer = Viewer(data=data, label=label, levels=levels)
-    if sys.flags.interactive != 1 or not hasattr(QtCore, 'PYQT_VERSION'):
-        _app.exec_()
+    nums = get_attributes(command)
+    fast_crds = np.linspace(nums[0], nums[1], int(nums[2]) + 1, endpoint=True)
+    slow_crds = np.linspace(nums[3], nums[4], int(nums[5]) + 1, endpoint=True)
+    return fast_crds, fast_crds.size, slow_crds, slow_crds.size
 
 def medfilt(data, kernel_size=30):
     bgdworker = partial(median_filter, size=(kernel_size, 1, 1))

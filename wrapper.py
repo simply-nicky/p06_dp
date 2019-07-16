@@ -5,11 +5,6 @@ from multiprocessing import cpu_count
 from scipy.ndimage.filters import median_filter
 from skimage.transform import probabilistic_hough_line
 
-try:
-    from PyQt5 import QtCore, QtGui
-except ImportError:
-    from PyQt4 import QtCore, QtGui
-
 class ROI(object):
     def __init__(self, roi):
         self.roi = roi
