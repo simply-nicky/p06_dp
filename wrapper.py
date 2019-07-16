@@ -120,7 +120,7 @@ class Scan(Measurement, metaclass=ABCMeta):
     mode = 'scan'
 
     @abstractproperty
-    def roi(self): pass
+    def sample(self): pass
 
     @abstractproperty
     def fast_size(self): pass
@@ -129,13 +129,22 @@ class Scan(Measurement, metaclass=ABCMeta):
     def fast_crds(self): pass
 
     @property
+    def roi(self): return utils.roi[self.sample]
+
+    @property
+    def zero(self): return utils.zero[self.sample]
+
+    @property
+    def mask(self): return utils.mask[self.sample]
+
+    @property
     def size(self): return (self.fast_size,)
 
     def data_chunk(self, paths):
         data_list = []
         for path in paths:
             with h5py.File(path, 'r') as datafile:
-                try: data_list.append(np.multiply(utils.mask, np.mean(datafile[utils.datapath][:], axis=0)))
+                try: data_list.append(np.multiply(utils.hotmask, np.mean(datafile[utils.datapath][:], axis=0)))
                 except KeyError: continue
         return None if not data_list else np.stack(data_list, axis=0)
 
@@ -154,10 +163,10 @@ class Scan(Measurement, metaclass=ABCMeta):
         flatfield = np.mean(flatfield_scan.data(), axis=0)
         return FlatfieldData(self.data() if data is None else data, flatfield)
 
-    def peaks(self, flatfield_num, mask, data=None):
+    def peaks(self, flatfield_num, data=None):
         flatfield_scan = OpenScan(self.prefix, flatfield_num, self.roi)
         flatfield = np.mean(flatfield_scan.data(), axis=0)
-        return Peaks(self.data() if data is None else data, flatfield, mask, self.roi)
+        return Peaks(self.data() if data is None else data, flatfield, self.mask, self.roi, self.zero)
 
     def _save_data(self, outfile, data=None):
         data = self.data() if data is None else data
@@ -180,7 +189,7 @@ class Scan(Measurement, metaclass=ABCMeta):
         self._save_parameters(outfile)
         data = self.data()
         self._save_data(outfile, data)
-        peaks = self.peaks(flatfield_num, mask, data)
+        peaks = self.peaks(flatfield_num, data)
         peaks.save(outfile)
         outfile.close()
 
@@ -200,8 +209,8 @@ class FlatfieldData(object):
         correct_group.create_dataset('corrected_data', data=self.corrected_data, compression='gzip')
 
 class Peaks(object):
-    def __init__(self, data, flatfield, mask, roi):
-        self.data, self.flatfield, self.mask, self.roi = data, flatfield, mask, roi
+    def __init__(self, data, flatfield, mask, roi, zero):
+        self.data, self.flatfield, self.mask, self.roi, self.zero = data, flatfield, mask, roi, zero
 
     @property
     def cropped_mask(self):
@@ -222,7 +231,7 @@ class Peaks(object):
             _lines = np.array([[[x0, y0], [x1, y1]]
                                 for (x0, y0), (x1, y1)
                                 in probabilistic_hough_line(_frame, threshold=finder_threshold, line_length=line_length, line_gap=line_gap)])
-            _lines = utils.findlinesrec(_lines, dalpha, dr, order)
+            _lines = utils.findlinesrec(_lines, self.zero, dalpha, dr, order)
             _ints = utils.peakintensity(_rawframe, _lines)
             _lineslist.append(_lines + np.array(self.roi[[2, 0]])); _intslist.append(_ints)
         return _lineslist, _intslist
@@ -243,17 +252,17 @@ class Peaks(object):
         datagroup.create_dataset('framesum', data=self.subtracted_data().sum(axis=0), compression='gzip')
 
 class Scan1D(Scan):
-    prefix, scan_num, fast_size, fast_crds, roi = None, None, None, None, None
+    prefix, scan_num, fast_size, fast_crds, sample = None, None, None, None, None
 
-    def __init__(self, prefix, scan_num, roi=utils.fullroi):
-        self.prefix, self.scan_num, self.roi = prefix, scan_num, roi
+    def __init__(self, prefix, scan_num, sample):
+        self.prefix, self.scan_num, self.sample = prefix, scan_num, sample
         self.fast_crds, self.fast_size = utils.coordinates(self.command)
 
 class Scan2D(Scan):
-    prefix, scan_num, fast_size, fast_crds, roi = None, None, None, None, None
+    prefix, scan_num, fast_size, fast_crds, sample = None, None, None, None, None
 
-    def __init__(self, prefix, scan_num, roi=utils.fullroi):
-        self.prefix, self.scan_num, self.roi = prefix, scan_num, roi
+    def __init__(self, prefix, scan_num, sample):
+        self.prefix, self.scan_num, self.sample = prefix, scan_num, sample
         self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
 
     @property

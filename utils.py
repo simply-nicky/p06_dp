@@ -7,7 +7,7 @@ from skimage.draw import line_aa
 
 raw_path = "/asap3/petra3/gpfs/p06/2019/data/11006252/raw"
 prefixes = {'alignment': '0001_alignment', 'opal': '0001_opal', 'b12_1': '0002_b12_1', 'b12_2': '0002_b12_2'}
-mask = np.load(os.path.join(os.path.dirname(__file__), "P06_mask.npy")).astype(np.int)
+hotmask = np.load(os.path.join(os.path.dirname(__file__), "P06_mask.npy")).astype(np.int)
 measpath = {'scan': "scan_{0:05d}", "frame": "count_{0:05d}"}
 datafilepath = "eiger4m_01"
 nxspath = "/scan/program_name"
@@ -17,8 +17,9 @@ energypath = "scan/data/energy"
 outpath = {'scan': "../results/scan_{0:05d}", 'frame': "../results/count_{0:05d}"}
 filename = {'scan': "scan_{0:s}_{1:05d}.h5", 'frame': "count_{0:s}_{1:05d}.h5"}
 commands = {'single_frame': ('cnt', 'ct'), 'scan1d': ('dscan', 'ascan'), 'scan2d': ('dmesh', 'cmesh')}
-lysroi = np.array([500, 1767, 800, 2070])
-b12roi = np.array([700, 2167, 600, 2070])
+mask = {'lys': np.load(os.path.join(os.path.dirname(__file__), 'lys_mask.npy')).astype(np.int), 'b12': np.load(os.path.join(os.path.dirname(__file__), 'b12_mask.npy')).astype(np.int)}
+roi = {'lys': np.array([500, 1767, 800, 2070]), 'b12': np.array([700, 2167, 600, 2070])}
+zero = {'lys': np.array([1010, 925]), 'b12': np.array([665, 680])}
 fullroi = np.array([0, 2167, 0, 2070])
 
 def make_output_dir(path):
@@ -60,15 +61,15 @@ def medfilt(data, kernel_size=30):
         bgd = np.concatenate([chunk for chunk in executor.map(bgdworker, np.array_split(data, cpu_count(), axis=0))])
     return bgd
 
-@nb.njit(nb.int64[:, :, :](nb.int64[:, :, :], nb.float64, nb.float64), fastmath=True)
-def findlines(lines, dalpha, dr, zero):
+@nb.njit(nb.int64[:, :, :](nb.int64[:, :, :], nb.int64[:], nb.float64, nb.float64), fastmath=True)
+def findlines(lines, zero, dalpha, dr):
     newlines = np.empty(lines.shape, dtype=np.int64)
     angles = np.empty((lines.shape[0],), dtype=np.float64)
     rs = np.empty((lines.shape[0],), dtype=np.float64)
     taus = np.empty((lines.shape[0], 2), dtype=np.float64)
     for idx in range(lines.shape[0]):
-        x = (lines[idx, 0, 0] + lines[idx, 1, 0]) / 2 - zero[1]
-        y = (lines[idx, 0, 1] + lines[idx, 1, 1]) / 2 - zero[0]
+        x = (lines[idx, 0, 0] + lines[idx, 1, 0]) / 2 - zero[0]
+        y = (lines[idx, 0, 1] + lines[idx, 1, 1]) / 2 - zero[1]
         tau = (lines[idx, 1] - lines[idx, 0]).astype(np.float64)
         taus[idx] = tau / sqrt(tau[0]**2 + tau[1]**2)
         angles[idx] = atan2(y, x)
@@ -93,7 +94,7 @@ def findlines(lines, dalpha, dr, zero):
 
 def findlinesrec(lines, zero, dalpha=0.1, dr=5, order=5):
     if order > 0:
-        newlines = np.unique(findlines(lines, dalpha, dr, zero), axis=0)
+        newlines = np.unique(findlines(lines, zero, dalpha, dr), axis=0)
         return findlinesrec(newlines, dalpha, dr, order - 1)
     else:
         return lines
