@@ -66,14 +66,12 @@ def background(data, mask, kernel_size=30):
     resdata[:, idx[0], idx[1]] = np.concatenate(datalist, axis=1)
     return resdata
 
-def subtract_bgd(data, bgd, value):
-    filt1 = partial(median_filter, size=(1, 5, 5))
-    filt2 = partial(median_filter, size=(1, 3, 3))
+def subtract_bgd(data, bgd):
+    filt = partial(median_filter, size=(1, 3, 3))
     sub = (data - bgd).astype(np.int32)
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        sub = np.concatenate([chunk for chunk in executor.map(filt1, np.array_split(sub, cpu_count()))])
-        res = np.where(sub > value, data, 0).astype(np.uint32)
-        res = np.concatenate([chunk for chunk in executor.map(filt2, np.array_split(res, cpu_count()))])
+        res = np.where(sub - bgd > sub.max(axis=(1, 2))[:, np.newaxis, np.newaxis] / 100, data, 0)
+        res = np.concatenate([chunk for chunk in executor.map(filt, np.array_split(res, cpu_count()))])
     return res
 
 @nb.njit(nb.int64[:, :, :](nb.int64[:, :, :], nb.int64[:], nb.float64, nb.float64), fastmath=True)

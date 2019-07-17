@@ -174,7 +174,7 @@ class CorrectedData(object):
 
     @property
     def corrected_data(self):
-        cordata = np.subtract(self.data, self.flatfield[np.newaxis, :], dtype=np.int64)
+        cordata = (self.data - self.flatfield[np.newaxis, :]).astype(np.int64)
         cordata[cordata < 0] = 0
         return cordata.astype(np.uint64)
 
@@ -188,27 +188,27 @@ class Peaks(object):
         self.data, self.flatfield, self.mask, self.zero = data[good_frames], flatfield, mask, zero
 
     def subtracted_data(self):
-        subdata = np.subtract(self.data, self.flatfield[np.newaxis, :], dtype=np.int64)
+        subdata = (self.data - self.flatfield[np.newaxis, :]).astype(np.int64)
         subdata[subdata < 0] = 0
         return subdata.astype(np.uint64)
 
-    def peaks(self, detect_threshold=10, kernel_size=30, finder_threshold=25, line_length=25, line_gap=5, drtau=25, drn=5):
+    def peaks(self, kernel_size=30, threshold=25, line_length=20, line_gap=5, drtau=25, drn=5):
         _subdata = self.subtracted_data()
         _background = utils.background(_subdata, self.mask, kernel_size)
-        _diffdata = utils.subtract_bgd(_subdata, _background, detect_threshold)
+        _diffdata = utils.subtract_bgd(_subdata, _background)
         _lineslist, _intslist = [], []
         for _frame, _rawframe in zip(_diffdata, _subdata):
             _lines = np.array([[[x0, y0], [x1, y1]]
                                 for (x0, y0), (x1, y1)
-                                in probabilistic_hough_line(_frame, threshold=finder_threshold, line_length=line_length, line_gap=line_gap)])
+                                in probabilistic_hough_line(_frame, threshold=threshold, line_length=line_length, line_gap=line_gap)])
             print(_lines.shape)
             _lines = utils.findlines(_lines, self.zero, drtau, drn)
             _ints = utils.peakintensity(_rawframe, _lines)
             _lineslist.append(_lines); _intslist.append(_ints)
         return _lineslist, _intslist
 
-    def save(self, outfile, detect_threshold=10, kernel_size=30, finder_threshold=25, line_length=25, line_gap=5, drtau=25, drn=5):
-        _lineslist, _intslist = self.peaks(detect_threshold, kernel_size, finder_threshold, line_length, line_gap, drtau, drn)
+    def save(self, outfile, kernel_size=30, threshold=25, line_length=20, line_gap=5, drtau=25, drn=5):
+        _lineslist, _intslist = self.peaks(kernel_size, threshold, line_length, line_gap, drtau, drn)
         _peakXPos = np.stack([np.pad(_lines.mean(axis=1)[:, 0], (0, 1024 - _lines.shape[0]), 'constant') for _lines in _lineslist])
         _peakYPos = np.stack([np.pad(_lines.mean(axis=1)[:, 1], (0, 1024 - _lines.shape[0]), 'constant') for _lines in _lineslist])
         _peakTotalIntensity = np.stack([np.pad(_ints, (0, 1024 - _ints.shape[0]), 'constant') for _ints in _intslist])
