@@ -199,6 +199,7 @@ class Peaks(object):
             _lines = np.array([[[x0, y0], [x1, y1]]
                                 for (x0, y0), (x1, y1)
                                 in probabilistic_hough_line(_frame, threshold=finder_threshold, line_length=line_length, line_gap=line_gap)])
+            print(_lines.shape)
             _lines = utils.findlines(_lines, self.zero, drtau, drn)
             _ints = utils.peakintensity(_rawframe, _lines)
             _lineslist.append(_lines); _intslist.append(_ints)
