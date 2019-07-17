@@ -141,7 +141,7 @@ class Scan(Measurement, metaclass=ABCMeta):
         if data is None: data = self.data()
         if good_frames is None: good_frames = np.arange(0, data.shape[0])
         ffscan = Frame(self.prefix, ffnum, 'scan')
-        flatfield = np.mean(ffscan.data(), axis=0)
+        flatfield = ffscan.data()
         return Peaks(data, flatfield, utils.mask[sample], utils.zero[sample], good_frames)
 
     def _save_data(self, outfile, data=None):
