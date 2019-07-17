@@ -188,7 +188,7 @@ class Peaks(object):
         self.data, self.flatfield, self.mask, self.zero = data[good_frames], flatfield, mask, zero
 
     def subtracted_data(self):
-        subdata = self.data - self.flatfield[np.newaxis, :]
+        subdata = np.subtract(self.data, self.flatfield[np.newaxis, :], dtype=np.int64)
         subdata[subdata < 0] = 0
         return subdata.astype(np.uint64)
 
