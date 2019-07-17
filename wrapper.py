@@ -137,13 +137,15 @@ class Scan(Measurement, metaclass=ABCMeta):
         flatfield = ffscan.data()
         return CorrectedData(self.data() if data is None else data, flatfield)
 
-    def peaks(self, ffnum, sample, data=None):
+    def peaks(self, ffnum, sample, data=None, good_frames=None):
+        if data is None: data = self.data()
+        if good_frames is None: good_frames = np.arange(0, data.shape[0])
         ffscan = Frame(self.prefix, ffnum, 'scan')
         flatfield = np.mean(ffscan.data(), axis=0)
-        return Peaks(self.data() if data is None else data, flatfield, utils.mask[sample], utils.zero[sample])
+        return Peaks(data, flatfield, utils.mask[sample], utils.zero[sample], good_frames)
 
     def _save_data(self, outfile, data=None):
-        data = self.data() if data is None else data
+        if data is None: data = self.data()
         datagroup = outfile.create_group('data')
         datagroup.create_dataset('data', data=data, compression='gzip')
         datagroup.create_dataset('fs_coordinates', data=self.fast_crds)
@@ -157,12 +159,12 @@ class Scan(Measurement, metaclass=ABCMeta):
         cordata.save(outfile)
         outfile.close()
 
-    def save_peaks(self, ffnum, sample):
+    def save_peaks(self, ffnum, sample, good_frames=None):
         outfile = self._create_outfile(tag='peaks')
         self._save_parameters(outfile)
         data = self.data()
         self._save_data(outfile, data)
-        peaks = self.peaks(ffnum, sample, data)
+        peaks = self.peaks(ffnum, sample, data, good_frames)
         peaks.save(outfile)
         outfile.close()
 
@@ -182,13 +184,13 @@ class CorrectedData(object):
         correct_group.create_dataset('corrected_data', data=self.corrected_data, compression='gzip')
 
 class Peaks(object):
-    def __init__(self, data, flatfield, mask, zero):
-        self.data, self.flatfield, self.mask, self.zero = data, flatfield, mask, zero
+    def __init__(self, data, flatfield, mask, zero, good_frames):
+        self.data, self.flatfield, self.mask, self.zero = data[good_frames], flatfield, mask, zero
 
     def subtracted_data(self):
         subdata = self.data - self.flatfield[np.newaxis, :]
         subdata[subdata < 0] = 0
-        return subdata
+        return subdata.astype(np.uint64)
 
     def peaks(self, detect_threshold=10, kernel_size=30, finder_threshold=25, line_length=25, line_gap=5, drtau=25, drn=5):
         _subdata = self.subtracted_data()
