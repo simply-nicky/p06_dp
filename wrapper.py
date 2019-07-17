@@ -100,7 +100,7 @@ class Frame(Measurement):
 
     def _save_data(self, outfile):
         datagroup = outfile.create_group('data')
-        datagroup.create_dataset('data', data=self.data())
+        datagroup.create_dataset('data', data=self.data(), compression='gzip')
 
 class Scan(Measurement, metaclass=ABCMeta):
     mode = 'scan'
@@ -178,7 +178,7 @@ class CorrectedData(object):
 
     def save(self, outfile):
         correct_group = outfile.create_group('corrected_data')
-        correct_group.create_dataset('flatfield', data=self.flatfield)
+        correct_group.create_dataset('flatfield', data=self.flatfield, compression='gzip')
         correct_group.create_dataset('corrected_data', data=self.corrected_data, compression='gzip')
 
 class Peaks(object):
@@ -190,22 +190,22 @@ class Peaks(object):
         subdata[subdata < 0] = 0
         return subdata
 
-    def peaks(self, detect_threshold=4, kernel_size=30, finder_threshold=25, line_length=25, line_gap=5, dalpha=0.1, dr=5, order=5):
-        _subdata = self.subtracted_data() * self.mask
-        _background = utils.medfilt(_subdata, kernel_size)
-        _diffdata = median_filter(np.where(_subdata - _background > detect_threshold, _subdata, 0), (1, 3, 3))
+    def peaks(self, detect_threshold=10, kernel_size=30, finder_threshold=25, line_length=25, line_gap=5, drtau=25, drn=5):
+        _subdata = self.subtracted_data()
+        _background = utils.background(_subdata, self.mask, kernel_size)
+        _diffdata = utils.subtract_bgd(_subdata, _background, detect_threshold)
         _lineslist, _intslist = [], []
         for _frame, _rawframe in zip(_diffdata, _subdata):
             _lines = np.array([[[x0, y0], [x1, y1]]
                                 for (x0, y0), (x1, y1)
                                 in probabilistic_hough_line(_frame, threshold=finder_threshold, line_length=line_length, line_gap=line_gap)])
-            _lines = utils.findlinesrec(_lines, self.zero, dalpha, dr, order)
+            _lines = utils.findlines(_lines, self.zero, drtau, drn)
             _ints = utils.peakintensity(_rawframe, _lines)
             _lineslist.append(_lines); _intslist.append(_ints)
         return _lineslist, _intslist
 
-    def save(self, outfile, detect_threshold=4, kernel_size=30, finder_threshold=25, line_length=25, line_gap=5, dalpha=0.1, dr=5, order=5):
-        _lineslist, _intslist = self.peaks(detect_threshold, kernel_size, finder_threshold, line_length, line_gap, dalpha, dr, order)
+    def save(self, outfile, detect_threshold=10, kernel_size=30, finder_threshold=25, line_length=25, line_gap=5, drtau=25, drn=5):
+        _lineslist, _intslist = self.peaks(detect_threshold, kernel_size, finder_threshold, line_length, line_gap, drtau, drn)
         _peakXPos = np.stack([np.pad(_lines.mean(axis=1)[:, 0], (0, 1024 - _lines.shape[0]), 'constant') for _lines in _lineslist])
         _peakYPos = np.stack([np.pad(_lines.mean(axis=1)[:, 1], (0, 1024 - _lines.shape[0]), 'constant') for _lines in _lineslist])
         _peakTotalIntensity = np.stack([np.pad(_ints, (0, 1024 - _ints.shape[0]), 'constant') for _ints in _intslist])

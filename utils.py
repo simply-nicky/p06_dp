@@ -55,14 +55,29 @@ def coordinates2d(command):
     slow_crds = np.linspace(nums[3], nums[4], int(nums[5]) + 1, endpoint=True)
     return fast_crds, fast_crds.size, slow_crds, slow_crds.size
 
-def medfilt(data, kernel_size=30):
-    bgdworker = partial(median_filter, size=(kernel_size, 1, 1))
+def background(data, mask, kernel_size=30):
+    idx = np.where(mask == 1)
+    filtdata = data[:, idx[0], idx[1]]
+    bgdworker, datalist = partial(median_filter, size=(kernel_size, 1)), []
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        bgd = np.concatenate([chunk for chunk in executor.map(bgdworker, np.array_split(data, cpu_count(), axis=0))])
-    return bgd
+        for chunk in executor.map(bgdworker, np.array_split(filtdata, cpu_count(), axis=1)):
+            datalist.append(chunk)
+    resdata = np.copy(data)
+    resdata[:, idx[0], idx[1]] = np.concatenate(datalist, axis=1)
+    return resdata
+
+def subtract_bgd(data, bgd, value):
+    filt1 = partial(median_filter, size=(1, 5, 5))
+    filt2 = partial(median_filter, size=(1, 3, 3))
+    sub = (data - bgd).astype(np.int32)
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        sub = np.concatenate([chunk for chunk in executor.map(filt1, np.array_split(sub, cpu_count()))])
+        res = np.where(sub > value, data, 0).astype(np.uint32)
+        res = np.concatenate([chunk for chunk in executor.map(filt2, np.array_split(res, cpu_count()))])
+    return res
 
 @nb.njit(nb.int64[:, :, :](nb.int64[:, :, :], nb.int64[:], nb.float64, nb.float64), fastmath=True)
-def findlines(lines, zero, dalpha, dr):
+def findlines(lines, zero, drtau, drn):
     newlines = np.empty(lines.shape, dtype=np.int64)
     angles = np.empty((lines.shape[0],), dtype=np.float64)
     rs = np.empty((lines.shape[0],), dtype=np.float64)
@@ -74,30 +89,28 @@ def findlines(lines, zero, dalpha, dr):
         taus[idx] = tau / sqrt(tau[0]**2 + tau[1]**2)
         angles[idx] = atan2(y, x)
         rs[idx] = sqrt(x**2 + y**2)
+    idxs = []
+    count = 0
     for idx in range(lines.shape[0]):
-        newline = np.empty((2, 2), dtype=np.float64)
-        proj0 = lines[idx, 0, 0] * taus[idx, 0] + lines[idx, 0, 1] * taus[idx, 1]
-        proj1 = lines[idx, 1, 0] * taus[idx, 0] + lines[idx, 1, 1] * taus[idx, 1]
-        if proj0 < proj1: newline[0] = lines[idx, 0]; newline[1] = lines[idx, 1]
-        else: newline[0] = lines[idx, 1]; newline[1] = lines[idx, 0]
-        for idx2 in range(lines.shape[0]):
-            if idx == idx2: continue
-            elif abs(angles[idx] - angles[idx2]) < dalpha and abs(rs[idx] - rs[idx2]) < dr:
-                proj20 = lines[idx2, 0, 0] * taus[idx, 0] + lines[idx2, 0, 1] * taus[idx, 1]
-                proj21 = lines[idx2, 1, 0] * taus[idx, 0] + lines[idx2, 1, 1] * taus[idx, 1]
-                if proj20 < proj0: newline[0] = lines[idx2, 0]
-                elif proj20 > proj1: newline[1] = lines[idx2, 0]
-                if proj21 < proj0: newline[0] = lines[idx2, 1]
-                elif proj21 > proj1: newline[1] = lines[idx2, 1]           
-        newlines[idx] = newline
-    return newlines
-
-def findlinesrec(lines, zero, dalpha=0.1, dr=5, order=5):
-    if order > 0:
-        newlines = np.unique(findlines(lines, zero, dalpha, dr), axis=0)
-        return findlinesrec(newlines, dalpha, dr, order - 1)
-    else:
-        return lines
+        if idx not in idxs:
+            newline = np.empty((2, 2), dtype=np.float64)
+            proj0 = lines[idx, 0, 0] * taus[idx, 0] + lines[idx, 0, 1] * taus[idx, 1]
+            proj1 = lines[idx, 1, 0] * taus[idx, 0] + lines[idx, 1, 1] * taus[idx, 1]
+            if proj0 < proj1: newline[0] = lines[idx, 0]; newline[1] = lines[idx, 1]
+            else: newline[0] = lines[idx, 1]; newline[1] = lines[idx, 0]
+            for idx2 in range(lines.shape[0]):
+                if idx == idx2: continue
+                elif abs((angles[idx] - angles[idx2]) * rs[idx]) < drtau and abs(rs[idx] - rs[idx2]) < drn:
+                    idxs.append(idx2)
+                    proj20 = lines[idx2, 0, 0] * taus[idx, 0] + lines[idx2, 0, 1] * taus[idx, 1]
+                    proj21 = lines[idx2, 1, 0] * taus[idx, 0] + lines[idx2, 1, 1] * taus[idx, 1]
+                    if proj20 < proj0: newline[0] = lines[idx2, 0]
+                    elif proj20 > proj1: newline[1] = lines[idx2, 0]
+                    if proj21 < proj0: newline[0] = lines[idx2, 1]
+                    elif proj21 > proj1: newline[1] = lines[idx2, 1]           
+            newlines[count] = newline
+            count += 1
+    return newlines[:count]
 
 def peakintensity(frame, lines):
     ints = []
