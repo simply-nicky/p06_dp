@@ -142,7 +142,7 @@ class Scan(Measurement, metaclass=ABCMeta):
         if good_frames is None: good_frames = np.arange(0, data.shape[0])
         ffscan = Frame(self.prefix, ffnum, 'scan')
         flatfield = ffscan.data()
-        return Peaks(data, flatfield, utils.mask[sample], utils.zero[sample], good_frames)
+        return Peaks(data, flatfield, utils.mask[sample], utils.zero[sample], utils.thresholds[sample], utils.linelens[sample], good_frames)
 
     def _save_data(self, outfile, data=None):
         if data is None: data = self.data()
@@ -184,30 +184,30 @@ class CorrectedData(object):
         correct_group.create_dataset('corrected_data', data=self.corrected_data, compression='gzip')
 
 class Peaks(object):
-    def __init__(self, data, flatfield, mask, zero, good_frames):
-        self.data, self.flatfield, self.mask, self.zero = data[good_frames], flatfield, mask, zero
+    def __init__(self, data, flatfield, mask, zero, thresholds, linelength, good_frames):
+        self.data, self.flatfield, self.mask, self.thresholds, self.linelength, self.zero = data[good_frames], flatfield, mask, thresholds, linelength, zero
 
     def subtracted_data(self):
         subdata = (self.data - self.flatfield[np.newaxis, :]).astype(np.int64)
         subdata[subdata < 0] = 0
         return subdata.astype(np.uint64)
 
-    def peaks(self, kernel_size=30, threshold=25, line_length=20, line_gap=5, drtau=25, drn=5):
+    def peaks(self, kernel_size=30, threshold=25, line_gap=5, drtau=30, drn=5):
         _subdata = self.subtracted_data()
         _background = utils.background(_subdata, self.mask, kernel_size)
-        _diffdata = utils.subtract_bgd(_subdata, _background)
+        _diffdata = utils.subtract_bgd(_subdata, _background, self.thresholds)
         _lineslist, _intslist = [], []
         for _frame, _rawframe in zip(_diffdata, _subdata):
             _lines = np.array([[[x0, y0], [x1, y1]]
                                 for (x0, y0), (x1, y1)
-                                in probabilistic_hough_line(_frame, threshold=threshold, line_length=line_length, line_gap=line_gap)])
+                                in probabilistic_hough_line(_frame, threshold=threshold, line_length=self.linelength, line_gap=line_gap)])
             _lines = utils.findlines(_lines, self.zero, drtau, drn)
             _ints = utils.peakintensity(_rawframe, _lines)
             _lineslist.append(_lines); _intslist.append(_ints)
         return _lineslist, _intslist
 
-    def save(self, outfile, kernel_size=30, threshold=25, line_length=20, line_gap=5, drtau=25, drn=5):
-        _lineslist, _intslist = self.peaks(kernel_size, threshold, line_length, line_gap, drtau, drn)
+    def save(self, outfile, kernel_size=30, threshold=25, line_gap=5, drtau=30, drn=5):
+        _lineslist, _intslist = self.peaks(kernel_size, threshold, line_gap, drtau, drn)
         _peakXPos = np.stack([np.pad(_lines.mean(axis=1)[:, 0], (0, 1024 - _lines.shape[0]), 'constant') for _lines in _lineslist])
         _peakYPos = np.stack([np.pad(_lines.mean(axis=1)[:, 1], (0, 1024 - _lines.shape[0]), 'constant') for _lines in _lineslist])
         _peakTotalIntensity = np.stack([np.pad(_ints, (0, 1024 - _ints.shape[0]), 'constant') for _ints in _intslist])
