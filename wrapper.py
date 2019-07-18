@@ -216,10 +216,16 @@ class Peaks(object):
         resgroup.create_dataset('peakXPosRaw', data=_peakXPos)
         resgroup.create_dataset('peakYPosRaw', data=_peakYPos)
         resgroup.create_dataset('peakTotalIntensity', data=_peakTotalIntensity)
-        datagroup = outfile.create_group('entry_1/data_1')
+        datagroup = outfile.create_group('peaks_data')
         datagroup.create_dataset('data', data=self.subtracted_data(), compression='gzip')
         datagroup.create_dataset('mask', data=self.mask, compression='gzip')
         datagroup.create_dataset('framesum', data=self.subtracted_data().sum(axis=0), compression='gzip')
+        linesgroup = datagroup.create_group('bragg_lines')
+        intsgroup = datagroup.create_group('bragg_intensities')
+        for idx, (lines, ints) in enumerate(zip(_lineslist, _intslist)):
+            linesgroup.create_dataset(str(idx), data=lines)
+            intsgroup.create_dataset(str(idx), data=ints)
+
 
 class Scan1D(Scan):
     prefix, scan_num, fast_size, fast_crds = None, None, None, None
