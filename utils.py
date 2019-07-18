@@ -18,10 +18,9 @@ outpath = {'scan': "../results/scan_{0:05d}", 'frame': "../results/count_{0:05d}
 filename = {'scan': "scan_{0:s}_{1:05d}.h5", 'frame': "count_{0:s}_{1:05d}.h5"}
 datafilename = {'scan': 'scan_{0:05d}_data_{1:06d}.h5', 'frame': 'count_{0:05d}_data_{1:06d}.h5'}
 commands = {'single_frame': ('cnt', 'ct'), 'scan1d': ('dscan', 'ascan'), 'scan2d': ('dmesh', 'cmesh')}
-mask = {'lys': np.load(os.path.join(os.path.dirname(__file__), 'lys_mask.npy')), 'b12': np.load(os.path.join(os.path.dirname(__file__), 'b12_mask.npy'))}
-zero = {'lys': np.array([1010, 925]), 'b12': np.array([665, 680])}
-linelens = {'lys': 25, 'b12': 15}
-fullroi = np.array([0, 2167, 0, 2070])
+mask = {107: np.load(os.path.join(os.path.dirname(__file__), '107_mask.npy')), 135: np.load(os.path.join(os.path.dirname(__file__), '135_mask.npy'))}
+zero = {107: np.array([925, 1010]), 135: np.array([680, 665])}
+linelens = {107: 25, 135: 15, 133: 20}
 
 def make_output_dir(path):
     try:
@@ -82,8 +81,8 @@ def findlines(lines, zero, drtau, drn):
     rs = np.empty((lines.shape[0],), dtype=np.float64)
     taus = np.empty((lines.shape[0], 2), dtype=np.float64)
     for idx in range(lines.shape[0]):
-        x = (lines[idx, 0, 0] + lines[idx, 1, 0]) / 2 - zero[0]
-        y = (lines[idx, 0, 1] + lines[idx, 1, 1]) / 2 - zero[1]
+        x = (lines[idx, 0, 0] + lines[idx, 1, 0]) / 2 - zero[1]
+        y = (lines[idx, 0, 1] + lines[idx, 1, 1]) / 2 - zero[0]
         tau = (lines[idx, 1] - lines[idx, 0]).astype(np.float64)
         taus[idx] = tau / sqrt(tau[0]**2 + tau[1]**2)
         angles[idx] = atan2(y, x)

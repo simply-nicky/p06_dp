@@ -142,7 +142,7 @@ class Scan(Measurement, metaclass=ABCMeta):
         if good_frames is None: good_frames = np.arange(0, data.shape[0])
         ffscan = Frame(self.prefix, ffnum, 'scan')
         flatfield = ffscan.data()
-        return Peaks(data, flatfield, utils.mask[sample], utils.zero[sample], utils.linelens[sample], good_frames)
+        return Peaks(data, flatfield, self.scan_num, good_frames)
 
     def _save_data(self, outfile, data=None):
         if data is None: data = self.data()
@@ -184,8 +184,11 @@ class CorrectedData(object):
         correct_group.create_dataset('corrected_data', data=self.corrected_data, compression='gzip')
 
 class Peaks(object):
-    def __init__(self, data, flatfield, mask, zero, linelength, good_frames):
-        self.data, self.flatfield, self.mask, self.linelength, self.zero = data[good_frames], flatfield, mask, linelength, zero
+    def __init__(self, data, flatfield, scan_num, good_frames):
+        self.data, self.flatfield = data[good_frames], flatfield
+        self.mask = utils.mask.get(scan_num, np.ones(self.flatfield.shape))
+        self.zero = utils.zero.get(scan_num, np.unravel_index(self.data.sum(axis=0).argmax(), self.flatfield.shape))
+        self.linelength = utils.linelens.get(scan_num, 20)
 
     def subtracted_data(self):
         subdata = (self.data - self.flatfield[np.newaxis, :]).astype(np.int64)
