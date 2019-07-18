@@ -229,6 +229,7 @@ class Peaks(object):
         datagroup.create_dataset('data', data=self.subtracted_data(), compression='gzip')
         datagroup.create_dataset('mask', data=self.mask, compression='gzip')
         datagroup.create_dataset('framesum', data=self.subtracted_data().sum(axis=0), compression='gzip')
+        datagroup.create_dataset('center_coordinate', data=np.array(self.zero))
         linesgroup = datagroup.create_group('bragg_lines')
         intsgroup = datagroup.create_group('bragg_intensities')
         for idx, (lines, ints) in enumerate(zip(_lineslist, _intslist)):
