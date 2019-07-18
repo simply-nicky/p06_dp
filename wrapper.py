@@ -142,7 +142,7 @@ class Scan(Measurement, metaclass=ABCMeta):
         if good_frames is None: good_frames = np.arange(0, data.shape[0])
         ffscan = Frame(self.prefix, ffnum, 'scan')
         flatfield = ffscan.data()
-        return Peaks(data, flatfield, utils.mask[sample], utils.zero[sample], utils.thresholds[sample], utils.linelens[sample], good_frames)
+        return Peaks(data, flatfield, utils.mask[sample], utils.zero[sample], utils.linelens[sample], good_frames)
 
     def _save_data(self, outfile, data=None):
         if data is None: data = self.data()
@@ -184,8 +184,8 @@ class CorrectedData(object):
         correct_group.create_dataset('corrected_data', data=self.corrected_data, compression='gzip')
 
 class Peaks(object):
-    def __init__(self, data, flatfield, mask, zero, thresholds, linelength, good_frames):
-        self.data, self.flatfield, self.mask, self.thresholds, self.linelength, self.zero = data[good_frames], flatfield, mask, thresholds, linelength, zero
+    def __init__(self, data, flatfield, mask, zero, linelength, good_frames):
+        self.data, self.flatfield, self.mask, self.linelength, self.zero = data[good_frames], flatfield, mask, linelength, zero
 
     def subtracted_data(self):
         subdata = (self.data - self.flatfield[np.newaxis, :]).astype(np.int64)
@@ -195,7 +195,7 @@ class Peaks(object):
     def peaks(self, kernel_size=30, threshold=25, line_gap=5, drtau=30, drn=5):
         _subdata = self.subtracted_data()
         _background = utils.background(_subdata, self.mask, kernel_size)
-        _diffdata = utils.subtract_bgd(_subdata, _background, self.thresholds)
+        _diffdata = utils.subtract_bgd(_subdata, _background)
         _lineslist, _intslist = [], []
         for _frame, _rawframe in zip(_diffdata, _subdata):
             _lines = np.array([[[x0, y0], [x1, y1]]

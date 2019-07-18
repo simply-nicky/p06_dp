@@ -20,7 +20,6 @@ datafilename = {'scan': 'scan_{0:05d}_data_{1:06d}.h5', 'frame': 'count_{0:05d}_
 commands = {'single_frame': ('cnt', 'ct'), 'scan1d': ('dscan', 'ascan'), 'scan2d': ('dmesh', 'cmesh')}
 mask = {'lys': np.load(os.path.join(os.path.dirname(__file__), 'lys_mask.npy')), 'b12': np.load(os.path.join(os.path.dirname(__file__), 'b12_mask.npy'))}
 zero = {'lys': np.array([1010, 925]), 'b12': np.array([665, 680])}
-thresholds = {'lys': np.load(os.path.join(os.path.dirname(__file__), 'lysthresholds.npy')), 'b12': np.load(os.path.join(os.path.dirname(__file__), 'b12thresholds.npy'))}
 linelens = {'lys': 25, 'b12': 15}
 fullroi = np.array([0, 2167, 0, 2070])
 
@@ -68,11 +67,11 @@ def background(data, mask, kernel_size=30):
     resdata[:, idx[0], idx[1]] = np.concatenate(datalist, axis=1)
     return resdata
 
-def subtract_bgd(data, bgd, thresholds):
+def subtract_bgd(data, bgd):
     filt = partial(median_filter, size=(1, 3, 3))
     sub = (data - bgd).astype(np.int32)
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        res = np.where(sub - bgd > thresholds[:, np.newaxis, np.newaxis], data, 0)
+        res = np.where(sub - bgd > 10, data, 0)
         res = np.concatenate([chunk for chunk in executor.map(filt, np.array_split(res, cpu_count()))])
     return res
 
