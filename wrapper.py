@@ -137,7 +137,7 @@ class Scan(Measurement, metaclass=ABCMeta):
         flatfield = ffscan.data()
         return CorrectedData(self.data() if data is None else data, flatfield)
 
-    def peaks(self, ffnum, sample, data=None, good_frames=None):
+    def peaks(self, ffnum, data=None, good_frames=None):
         if data is None: data = self.data()
         if good_frames is None: good_frames = np.arange(0, data.shape[0])
         ffscan = Frame(self.prefix, ffnum, 'scan')
@@ -159,12 +159,12 @@ class Scan(Measurement, metaclass=ABCMeta):
         cordata.save(outfile)
         outfile.close()
 
-    def save_peaks(self, ffnum, sample, good_frames=None):
+    def save_peaks(self, ffnum, good_frames=None):
         outfile = self._create_outfile(tag='peaks')
         self._save_parameters(outfile)
         data = self.data()
         self._save_data(outfile, data)
-        peaks = self.peaks(ffnum, sample, data, good_frames)
+        peaks = self.peaks(ffnum, data, good_frames)
         peaks.save(outfile)
         outfile.close()
 
