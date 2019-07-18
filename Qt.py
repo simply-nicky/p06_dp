@@ -80,6 +80,13 @@ class Grid(GLGraphicsItem):
         self.__spacing = [x,y]
         self.update()
 
+    def setGrid(self, x=None, y=None, size=None, ratio=20):
+        if size is not None:
+            x = size.x()
+            y = size.y()
+        self.setSize(x, y)
+        self.setSpacing(x / ratio, x / ratio)
+
     def spacing(self):
         return self.__spacing[:]
         
@@ -115,40 +122,40 @@ class Viewer3D(GLViewWidget):
         self.setWindowTitle(title)
         self.origin, self.roi = origin, roi
         self.setCamera()
-        self.makeGrid()
+        self.makeAxisGrid()
         
-    def makeGrid(self):
+    def makeAxisGrid(self):
         self.gx = Grid(color=(255, 255, 255, 50))
-        self.gx.setSize(self.roi[0], self.roi[2])
+        self.gx.setGrid(self.roi[0], self.roi[2])
         self.gx.rotate(90, 1, 0, 0)
         self.gx.translate(*self.origin)
         self.addItem(self.gx)
         self.gy = Grid(color=(255, 255, 255, 50))
-        self.gy.setSize(self.roi[2], self.roi[1])
+        self.gy.setGrid(self.roi[2], self.roi[1])
         self.gy.rotate(90, 0, -1, 0)
         self.gy.translate(*self.origin)
         self.addItem(self.gy)
         self.gz = Grid(color=(255, 255, 255, 50))
-        self.gz.setSize(self.roi[0], self.roi[1])
+        self.gz.setGrid(self.roi[0], self.roi[1])
         self.gz.translate(*self.origin)
         self.addItem(self.gz)
 
-    def resizeGrid(self, origin, roi):
-        self.gx.tranlate(*origin)
-        self.gx.scale(roi[0] / self.roi[0], 1, roi[2] / self.roi[2])
-        self.gy.translate(*origin)
-        self.gy.scale(1, roi[1] / self.roi[1], roi[2] / self.roi[2])
-        self.gz.translate(*origin)
-        self.gz.scale(roi[0] / self.roi[0], roi[1] / self.roi[1], 1)
+    def setAxisGrid(self, origin, roi):
+        self.gx.translate(origin[0] - self.origin[0], origin[1] - self.origin[1], origin[2] - self.origin[2])
+        self.gx.setGrid(roi[0], roi[2])
+        self.gy.translate(origin[0] - self.origin[0], origin[1] - self.origin[1], origin[2] - self.origin[2])
+        self.gy.setGrid(roi[2], roi[1])
+        self.gz.translate(origin[0] - self.origin[0], origin[1] - self.origin[1], origin[2] - self.origin[2])
+        self.gz.setGrid(roi[0], roi[1])
 
-    def setGridColor(self, color):
+    def setAxisGridColor(self, color):
         self.gx.setColor(color)
         self.gy.setColor(color)
         self.gz.setColor(color)
         self.update()
 
     def setCamera(self):
-        self.opts['center'] = QtGui.QVector3D(self.origin[0] + self.roi[0] / 2, self.origin[1] + self.roi[1] / 2, self.origin[2] + self.saveGeometryroi[2] / 2)
+        self.opts['center'] = QtGui.QVector3D(self.origin[0] + self.roi[0] / 2, self.origin[1] + self.roi[1] / 2, self.origin[2] + self.roi[2] / 2)
         self.opts['distance'] = max(self.roi) * 2
         self.update()
 
@@ -179,9 +186,8 @@ class ScatterViewer(Viewer3D):
         self.sp.setData(**kwds)
         origin = pos.min(axis=0)
         roi = pos.max(axis=0) - origin
-        self.resizeGrid(origin, roi)
-        self.origin = origin
-        self.roi = roi
+        self.setAxisGrid(origin, roi)
+        self.origin, self.roi = origin, roi
         self.setCamera()
 
 class VolumeViewer(Viewer3D):
@@ -199,10 +205,16 @@ class VolumeViewer(Viewer3D):
         smooth          (bool) If True, the volume slices are rendered with linear interpolation 
         ==============  =======================================================================================
         """
-        self.v.sliceDensity = sliceDensity
-        self.v.smooth = smooth
+        self.v.sliceDensity, self.v.smooth = sliceDensity, smooth
         self.v.setData(data)
         roi = data.shape[:-1]
-        self.resizeGrid(self.origin, roi)
+        self.setAxisGrid(self.origin, roi)
         self.roi = roi
         self.setCamera()
+
+def volumedata(data, col=[255, 255, 255]):
+    voldata = np.empty(data.shape + (4,), dtype=np.ubyte)
+    adata = np.log(np.clip(data, 0, data.max())**2)
+    voldata[..., 0:3] = col
+    voldata[..., 3] = adata * (255 / adata.max())
+    return voldata
