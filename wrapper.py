@@ -208,10 +208,16 @@ class Peaks(object):
 
     def save(self, outfile, kernel_size=30, threshold=25, line_gap=5, drtau=30, drn=5):
         _lineslist, _intslist = self.peaks(kernel_size, threshold, line_gap, drtau, drn)
-        _peakXPos = np.stack([np.pad(_lines.mean(axis=1)[:, 0], (0, 1024 - _lines.shape[0]), 'constant') for _lines in _lineslist])
-        _peakYPos = np.stack([np.pad(_lines.mean(axis=1)[:, 1], (0, 1024 - _lines.shape[0]), 'constant') for _lines in _lineslist])
-        _peakTotalIntensity = np.stack([np.pad(_ints, (0, 1024 - _ints.shape[0]), 'constant') for _ints in _intslist])
-        _nPeaks = np.array([_lines.shape[0] for _lines in _lineslist])
+        _peakXPos = np.zeros((len(_lineslist), 1024), dtype=np.float32)
+        _peakYPos = np.zeros((len(_lineslist), 1024), dtype=np.float32)
+        _peakTotalIntensity = np.zeros((len(_lineslist), 1024), dtype=np.float32)
+        _nPeaks = np.zeros((len(_lineslist),), dtype=np.int32)
+        for idx, (lines, ints) in enumerate(zip(_lineslist, _intslist)):
+            if lines.any():
+                _peakXPos[idx, :lines.shape[0]] = lines.mean(axis=1)[:, 0]
+                _peakYPos[idx, :lines.shape[0]] = lines.mean(axis=1)[:, 1]
+                _peakTotalIntensity[idx, :lines.shape[0]] = ints
+                _nPeaks[idx] = lines.shape[0]
         resgroup = outfile.create_group('entry_1/result_1')
         resgroup.create_dataset('peakXPosRaw', data=_peakXPos)
         resgroup.create_dataset('peakYPosRaw', data=_peakYPos)
