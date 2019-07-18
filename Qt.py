@@ -11,9 +11,9 @@ def makeApp():
         app = QtWidgets.QApplication(sys.argv)
     return app
 
-class Viewer(QtGui.QMainWindow):
+class Viewer2D(QtGui.QMainWindow):
     def __init__(self, data, label, levels, parent=None, size=(640, 480)):
-        super(Viewer, self).__init__(parent=parent, size=QtCore.QSize(size[0], size[1]))
+        QtGui.QMainWindow.__init__(parent=parent, size=QtCore.QSize(size[0], size[1]))
         self.setWindowTitle('CBC Viewer')
         self.update_ui(data, label, levels)
 
@@ -35,7 +35,7 @@ class Viewer(QtGui.QMainWindow):
 
 def showData(self, data, label, levels=(0, 100)):
     app = makeApp()
-    viewer = Viewer(data=data, label=label, levels=levels)
+    viewer = Viewer2D(data=data, label=label, levels=levels)
     if sys.flags.interactive != 1 or not hasattr(QtCore, 'PYQT_VERSION'):
         app.exec_()
 
@@ -108,20 +108,16 @@ class Grid(GLGraphicsItem):
 
         glEnd()
 
-class ScatterViewer(GLViewWidget):
-    def __init__(self, title='Scatter Plot', origin=(0.0, 0.0, 0.0), roi=(1.0, 1.0, 1.0), size=(800, 600), parent=None):
+class Viewer3D(GLViewWidget):
+    def __init__(self, title='Plot3D', origin=(0.0, 0.0, 0.0), roi=(1.0, 1.0, 1.0), size=(800, 600), parent=None):
         GLViewWidget.__init__(self, parent)
         self.resize(size[0], size[1])
         self.setWindowTitle(title)
         self.origin, self.roi = origin, roi
-        self.setCenter(pos=QtGui.QVector3D(origin[0] + roi[0] / 2, origin[1] + roi[1] / 2, origin[2] + roi[2] / 2))
-        self.setDistance(max(self.roi) * 2)
-        self.setGrid()
-        self.sp = gl.GLScatterPlotItem()
-        self.sp.setGLOptions('translucent')
-        self.addItem(self.sp)
+        self.setCamera()
+        self.makeGrid()
         
-    def setGrid(self):
+    def makeGrid(self):
         self.gx = Grid(color=(255, 255, 255, 50))
         self.gx.setSize(self.roi[0], self.roi[2])
         self.gx.rotate(90, 1, 0, 0)
@@ -136,22 +132,77 @@ class ScatterViewer(GLViewWidget):
         self.gz.setSize(self.roi[0], self.roi[1])
         self.gz.translate(*self.origin)
         self.addItem(self.gz)
-        
+
+    def resizeGrid(self, origin, roi):
+        self.gx.tranlate(*origin)
+        self.gx.scale(roi[0] / self.roi[0], 1, roi[2] / self.roi[2])
+        self.gy.translate(*origin)
+        self.gy.scale(1, roi[1] / self.roi[1], roi[2] / self.roi[2])
+        self.gz.translate(*origin)
+        self.gz.scale(roi[0] / self.roi[0], roi[1] / self.roi[1], 1)
+
     def setGridColor(self, color):
         self.gx.setColor(color)
         self.gy.setColor(color)
         self.gz.setColor(color)
         self.update()
-        
-    def setDistance(self, distance):
-        self.opts['distance'] = distance
+
+    def setCamera(self):
+        self.opts['center'] = QtGui.QVector3D(self.origin[0] + self.roi[0] / 2, self.origin[1] + self.roi[1] / 2, self.origin[2] + self.saveGeometryroi[2] / 2)
+        self.opts['distance'] = max(self.roi) * 2
         self.update()
+
+class ScatterViewer(Viewer3D):
+    def __init__(self, title='Scatter Plot', origin=(0.0, 0.0, 0.0), roi=(1.0, 1.0, 1.0), size=(800, 600), parent=None):
+        Viewer3D.__init__(self, title, origin, roi, size, parent)
+        self.sp = gl.GLScatterPlotItem()
+        self.sp.setGLOptions('translucent')
+        self.addItem(self.sp)
+
+    def setData(self, pos, color=[1.0 ,1.0, 1.0, 0.5], size=10):
+        """
+        Update the data displayed by this item. All arguments are optional; 
+        for example it is allowed to update spot positions while leaving 
+        colors unchanged, etc.
         
-    def setCenter(self, x=None, y=None, z=None, pos=None):
-        if pos is not None:
-            x, y, z = pos.x(), pos.y(), pos.z()
-        self.opts['center'] = QtGui.QVector3D(x, y, z)
-        self.update()
-        
-    def setData(self, **kwds):
+        ====================  ==================================================
+        **Arguments:**
+        pos                   (N,3) array of floats specifying point locations.
+        color                 (N,4) array of floats (0.0-1.0) specifying
+                              spot colors OR a tuple of floats specifying
+                              a single color for all spots.
+        size                  (N,) array of floats specifying spot sizes or 
+                              a single value to apply to all spots.
+        ====================  ==================================================
+        """
+        kwds = {'pos': pos, 'color': color, 'size': size}
         self.sp.setData(**kwds)
+        origin = pos.min(axis=0)
+        roi = pos.max(axis=0) - origin
+        self.resizeGrid(origin, roi)
+        self.origin = origin
+        self.roi = roi
+        self.setCamera()
+
+class VolumeViewer(Viewer3D):
+    def __init__(self, title='Volume Plot', origin=(0.0, 0.0, 0.0), roi=(1.0, 1.0, 1.0), size=(800, 600), parent=None):
+        Viewer3D.__init__(self, title, origin, roi, size, parent)
+        self.v = gl.GLVolumeItem(data=None)
+        self.addItem(self.v)
+
+    def setData(self, data, smooth=True, sliceDensity=1):
+        """
+        ==============  =======================================================================================
+        **Arguments:**
+        data            Volume data to be rendered. *Must* be 4D numpy array (x, y, z, RGBA) with dtype=ubyte.
+        sliceDensity    Density of slices to render through the volume. A value of 1 means one slice per voxel.
+        smooth          (bool) If True, the volume slices are rendered with linear interpolation 
+        ==============  =======================================================================================
+        """
+        self.v.sliceDensity = sliceDensity
+        self.v.smooth = smooth
+        self.v.setData(data)
+        roi = data.shape[:-1]
+        self.resizeGrid(self.origin, roi)
+        self.roi = roi
+        self.setCamera()

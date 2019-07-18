@@ -198,11 +198,11 @@ class Peaks(object):
         _diffdata = utils.subtract_bgd(_subdata, _background)
         _lineslist, _intslist = [], []
         for _frame, _rawframe in zip(_diffdata, _subdata):
-            _lines = np.array([[[x0, y0], [x1, y1]]
-                                for (x0, y0), (x1, y1)
-                                in probabilistic_hough_line(_frame, threshold=threshold, line_length=self.linelength, line_gap=line_gap)])
-            _lines = utils.findlines(_lines, self.zero, drtau, drn)
-            _ints = utils.peakintensity(_rawframe, _lines)
+            _lines, _ints = np.array([[[x0, y0], [x1, y1]] for (x0, y0), (x1, y1)
+                                    in probabilistic_hough_line(_frame, threshold=threshold, line_length=self.linelength, line_gap=line_gap)]), []
+            if _lines.any():
+                _lines = utils.findlines(_lines, self.zero, drtau, drn)
+                _ints = utils.peakintensity(_rawframe, _lines)
             _lineslist.append(_lines); _intslist.append(_ints)
         return _lineslist, _intslist
 
