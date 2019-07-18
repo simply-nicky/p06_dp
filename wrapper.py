@@ -187,7 +187,7 @@ class Peaks(object):
     def __init__(self, data, flatfield, scan_num, good_frames):
         self.data, self.flatfield = data[good_frames], flatfield
         self.mask = utils.mask.get(scan_num, np.ones(self.flatfield.shape))
-        self.zero = utils.zero.get(scan_num, np.unravel_index(self.data.sum(axis=0).argmax(), self.flatfield.shape))
+        self.zero = utils.zero.get(scan_num, np.array(np.unravel_index(self.data.sum(axis=0).argmax(), self.flatfield.shape)))
         self.linelength = utils.linelens.get(scan_num, 20)
 
     def subtracted_data(self):
@@ -229,7 +229,7 @@ class Peaks(object):
         datagroup.create_dataset('data', data=self.subtracted_data(), compression='gzip')
         datagroup.create_dataset('mask', data=self.mask, compression='gzip')
         datagroup.create_dataset('framesum', data=self.subtracted_data().sum(axis=0), compression='gzip')
-        datagroup.create_dataset('center_coordinate', data=np.array(self.zero))
+        datagroup.create_dataset('center_coordinate', data=self.zero)
         linesgroup = datagroup.create_group('bragg_lines')
         intsgroup = datagroup.create_group('bragg_intensities')
         for idx, (lines, ints) in enumerate(zip(_lineslist, _intslist)):
