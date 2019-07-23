@@ -52,12 +52,12 @@ class Grid(GLGraphicsItem):
         self.setSize(size=size)
         self.setSpacing(0.05, 0.05)
 
-    def setColor(self, *args):
+    def setColor(self, color):
         """
         Set the color of the grid. Arguments are the same as those accepted by
         :func:`glColor <pyqtgraph.glColor>`.
         """
-        self.color = pg.glColor(*args)
+        self.color = pg.glColor(color)
         self.update()
 
     def setSize(self, x=None, y=None, size=None):
@@ -214,7 +214,7 @@ class VolumeViewer(Viewer3D):
 
 def volumedata(data, col=[255, 255, 255]):
     voldata = np.empty(data.shape + (4,), dtype=np.ubyte)
-    adata = np.log(np.clip(data, 0, data.max())**2)
+    adata = np.log(data - data.min() + 1)
     voldata[..., 0:3] = col
     voldata[..., 3] = adata * (255 / adata.max())
     return voldata

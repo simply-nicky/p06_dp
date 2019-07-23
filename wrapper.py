@@ -195,7 +195,7 @@ class Peaks(object):
         subdata[subdata < 0] = 0
         return subdata.astype(np.uint64)
 
-    def peaks(self, kernel_size=30, threshold=25, line_gap=5, drtau=30, drn=5):
+    def peaks(self, kernel_size=30, threshold=25, line_gap=5, drtau=30, drn=10):
         _subdata = self.subtracted_data()
         _background = utils.background(_subdata, self.mask, kernel_size)
         _diffdata = utils.subtract_bgd(_subdata, _background)
@@ -209,7 +209,7 @@ class Peaks(object):
             _lineslist.append(_lines); _intslist.append(_ints)
         return _lineslist, _intslist
 
-    def save(self, outfile, kernel_size=30, threshold=25, line_gap=5, drtau=30, drn=5):
+    def save(self, outfile, kernel_size=30, threshold=25, line_gap=5, drtau=30, drn=10):
         _lineslist, _intslist = self.peaks(kernel_size, threshold, line_gap, drtau, drn)
         _peakXPos = np.zeros((len(_lineslist), 1024), dtype=np.float32)
         _peakYPos = np.zeros((len(_lineslist), 1024), dtype=np.float32)

@@ -1,5 +1,5 @@
 import numpy as np, h5py, os, errno,  pyqtgraph as pg, sys, numba as nb, concurrent.futures
-from math import sqrt, atan2
+from math import sqrt, atan2, pi
 from functools import partial
 from multiprocessing import cpu_count
 from scipy.ndimage.filters import median_filter
@@ -19,7 +19,7 @@ filename = {'scan': "scan_{0:s}_{1:05d}.h5", 'frame': "count_{0:s}_{1:05d}.h5"}
 datafilename = {'scan': 'scan_{0:05d}_data_{1:06d}.h5', 'frame': 'count_{0:05d}_data_{1:06d}.h5'}
 commands = {'single_frame': ('cnt', 'ct'), 'scan1d': ('dscan', 'ascan'), 'scan2d': ('dmesh', 'cmesh')}
 mask = {107: np.load(os.path.join(os.path.dirname(__file__), '107_mask.npy')), 135: np.load(os.path.join(os.path.dirname(__file__), '135_mask.npy'))}
-zero = {107: np.array([925, 1010]), 135: np.array([680, 665])}
+zero = {107: np.array([1480, 1155]), 135: np.array([1470, 1710])}
 linelens = {107: 25, 135: 15, 133: 20}
 
 def make_output_dir(path):
