@@ -55,16 +55,16 @@ class Measurement(metaclass=ABCMeta):
     @property
     def mask(self): return utils.hotmask
 
-    def filename(self, tag): return utils.filename[self.mode].format(tag, self.scan_num)
+    def filename(self, tag, ext): return utils.filename[self.mode].format(tag, self.scan_num, ext)
 
     def masked_data(self, data=None):
         if data is None: data = self.data()
         return self.mask * data
 
-    def _create_outfile(self, tag):
+    def _create_outfile(self, tag, ext='h5'):
         self.outpath = os.path.join(os.path.dirname(__file__), utils.outpath[self.mode].format(self.scan_num))
         utils.make_output_dir(self.outpath)
-        return h5py.File(os.path.join(self.outpath, self.filename(tag)), 'w')
+        return h5py.File(os.path.join(self.outpath, self.filename(tag, ext)), 'w')
     
     def _save_parameters(self, outfile):
         arggroup = outfile.create_group('arguments')
@@ -329,7 +329,7 @@ class ScanST(ABCScan):
         outfile.create_dataset('entry_1/data_1/data', data=data, compression='gzip')
 
     def save_st(self, data=None):
-        outfile = self._create_outfile(tag='st')
+        outfile = self._create_outfile(tag='st', ext='cxi')
         detector_1 = outfile.create_group('instrument_1/detector_1')
         detector_1.create_dataset('basis_vectors', data=self.basis_vectors())
         detector_1.create_dataset('distance', data=self.detector_distance)
