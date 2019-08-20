@@ -302,7 +302,7 @@ class ScanST(ABCScan):
         self.prefix, self.scan_num, self.good_frames = prefix, scan_num, good_frames
         self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
         if self.good_frames is None: self.good_frames = np.arange(0, self.size)
-        self.flatfield = Frame(self.prefix, ff_num).data()
+        self.flatfield = Frame(self.prefix, ff_num).masked_data()
 
     def basis_vectors(self):
         _vec_fs = np.tile(self.pixel_vector * self.unit_vector_fs, (self.size, 1))
@@ -328,7 +328,7 @@ class ScanST(ABCScan):
         outfile.create_dataset('frame_selector/good_frames', data=self.good_frames)
         outfile.create_dataset('mask_maker/mask', data=self.mask)
         outfile.create_dataset('make_whitefield/whitefield', data=self.flatfield)
-        outfile.create_dataset('entry_1/data_1/data', data=data)
+        outfile.create_dataset('entry_1/data_1/data', data=self.masked_data(data))
 
     def save_st(self, data=None):
         outfile = self._create_outfile(tag='st', ext='cxi')
