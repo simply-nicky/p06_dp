@@ -43,7 +43,7 @@ class Measurement(metaclass=ABCMeta):
 
     @property
     def energy(self):
-        return utils.energy(self.nxsfilepath)
+        return utils.energy(self.nxsfilepath)[0]
 
     @property
     def exposure(self):
@@ -294,7 +294,7 @@ class ScanST(ABCScan):
     def size(self): return self.slow_size * self.fast_size
 
     @property
-    def wavelength(self): return constants.c * constants.h / self.energy
+    def wavelength(self): return constants.c * constants.h / constants.e / self.energy
 
     def __init__(self, prefix, scan_num, ff_num, good_frames=None):
         self.prefix, self.scan_num, self.good_frames = prefix, scan_num, good_frames
