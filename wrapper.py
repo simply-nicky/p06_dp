@@ -313,7 +313,7 @@ class ScanST(ABCScan):
             with h5py.File(path, 'r') as datafile:
                 try: data_list.append(datafile[utils.datapath][:])
                 except KeyError: continue
-        return None if not data_list else np.stack(data_list, axis=0)
+        return None if not data_list else np.concatenate(data_list, axis=0)
 
     def translation(self):
         _x_pos = np.tile(self.fast_crds * 1e-6, self.slow_size)
