@@ -330,13 +330,13 @@ class ScanST(ABCScan):
 
     def save_st(self, data=None):
         outfile = self._create_outfile(tag='st', ext='cxi')
-        detector_1 = outfile.create_group('instrument_1/detector_1')
+        detector_1 = outfile.create_group('entry_1/instrument_1/detector_1')
         detector_1.create_dataset('basis_vectors', data=self.basis_vectors())
         detector_1.create_dataset('distance', data=self.detector_distance)
         detector_1.create_dataset('x_pixel_size', data=self.x_pixel_size)
         detector_1.create_dataset('y_pixel_size', data=self.y_pixel_size)
-        source_1 = outfile.create_group('instrument_1/source_1')
+        source_1 = outfile.create_group('entry_1/instrument_1/source_1')
         source_1.create_dataset('energy', data=self.energy)
         source_1.create_dataset('wavelength', data=self.wavelength)
-        outfile.create_dataset('sample_3/geometry/translation', data=self.translation())
+        outfile.create_dataset('entry_1/sample_3/geometry/translation', data=self.translation())
         self._save_data(outfile, data)
