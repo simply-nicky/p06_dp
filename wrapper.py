@@ -282,7 +282,9 @@ class ScanST(ABCScan):
     pixel_vector = np.array([7.5e-5, 7.5e-5, 0])
     unit_vector_fs = np.array([0, -1, 0])
     unit_vector_ss = np.array([-1, 0, 0])
-    detector_distance = 1.46
+    
+    @property
+    def detector_distance(self): return utils.det_dist[self.prefix]
 
     @property
     def x_pixel_size(self): return self.pixel_vector[0]

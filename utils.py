@@ -6,7 +6,7 @@ from scipy.ndimage.filters import median_filter
 from skimage.draw import line_aa
 
 raw_path = "/asap3/petra3/gpfs/p06/2019/data/11006252/raw"
-prefixes = {'alignment': '0001_alignment', 'opal': '0001_opal', 'b12_1': '0002_b12_1', 'b12_2': '0002_b12_2'}
+prefixes = {'alignment': '0001_alignment', 'opal': '0001_opal', 'b12_1': '0002_b12_1', 'b12_2': '0002_b12_2', 'imaging': '0003_imaging1'}
 hotmask = np.load(os.path.join(os.path.dirname(__file__), "P06_mask.npy"))
 measpath = {'scan': "scan_{0:05d}", "frame": "count_{0:05d}"}
 datafolder = "eiger4m_01"
@@ -21,6 +21,7 @@ commands = {'single_frame': ('cnt', 'ct'), 'scan1d': ('dscan', 'ascan'), 'scan2d
 mask = {107: np.load(os.path.join(os.path.dirname(__file__), '107_mask.npy')), 135: np.load(os.path.join(os.path.dirname(__file__), '135_mask.npy'))}
 zero = {107: np.array([1480, 1155]), 135: np.array([1470, 1710])}
 linelens = {107: 25, 135: 15, 133: 20}
+det_dist = {'alignment': 0.9, 'imaging': 1.46}
 
 def make_output_dir(path):
     try:
