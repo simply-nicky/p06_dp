@@ -51,8 +51,8 @@ def coordinates(command):
 
 def coordinates2d(command):
     nums = get_attributes(command)
-    fast_crds = np.linspace(nums[0], nums[1], int(nums[2]) + 1, endpoint=True)
-    slow_crds = np.linspace(nums[3], nums[4], int(nums[5]) + 1, endpoint=True)
+    fast_crds = np.linspace(nums[3], nums[4], int(nums[5]) + 1, endpoint=True)
+    slow_crds = np.linspace(nums[0], nums[1], int(nums[2]) + 1, endpoint=True)
     return fast_crds, fast_crds.size, slow_crds, slow_crds.size
 
 def background(data, mask, kernel_size=30):
@@ -81,8 +81,8 @@ def findlines(lines, zero, drtau, drn):
     rs = np.empty((lines.shape[0],), dtype=np.float64)
     taus = np.empty((lines.shape[0], 2), dtype=np.float64)
     for idx in range(lines.shape[0]):
-        x = (lines[idx, 0, 0] + lines[idx, 1, 0]) / 2 - zero[1]
-        y = (lines[idx, 0, 1] + lines[idx, 1, 1]) / 2 - zero[0]
+        x = (lines[idx, 0, 0] + lines[idx, 1, 0]) / 2 - zero[0]
+        y = (lines[idx, 0, 1] + lines[idx, 1, 1]) / 2 - zero[1]
         tau = (lines[idx, 1] - lines[idx, 0]).astype(np.float64)
         taus[idx] = tau / sqrt(tau[0]**2 + tau[1]**2)
         angles[idx] = atan2(y, x)

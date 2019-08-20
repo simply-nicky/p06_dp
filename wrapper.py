@@ -143,6 +143,12 @@ class Scan(Measurement, metaclass=ABCMeta):
         ffscan = Frame(self.prefix, ffnum, 'scan')
         flatfield = ffscan.data()
         return Peaks(data, flatfield, self.scan_num, good_frames)
+    
+    def st(self, ffnum, data=None):
+        if data is None: data = self.data()
+        ffscan = Frame(self.prefix, ffnum, 'scan')
+        flatfield = ffscan.data
+        return ST(self, data, flatfield)
 
     def _save_data(self, outfile, data=None):
         if data is None: data = self.data()
@@ -167,6 +173,27 @@ class Scan(Measurement, metaclass=ABCMeta):
         peaks = self.peaks(ffnum, data, good_frames)
         peaks.save(outfile)
         outfile.close()
+
+class ST(object):
+    pixel_vector = np.array([7.5e-5, 7.5e-5, 0])
+    unit_vector_fs = np.array([0, -1, 0])
+    unit_vector_ss = np.array([-1, 0, 0])
+    detector_distance = 1.46
+
+    @property
+    def x_pixel_size(self): return self.pixel_vector[0]
+
+    @property
+    def y_pixel_size(self): return self.pixel_vector[1]
+
+    def __init__(self, scan, data, flatfield):
+        self.scan, self.data, self.flatfield = scan, data, flatfield
+        self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(scan.command)
+
+    def basis_vectors(self):
+        _vec_fs = np.tile(self.pixel_vector * self.unit_vector_fs, (self.data.shape[0], 1))
+        _vec_ss = np.tile(self.pixel_vector * self.unit_vector_ss, (self.data.shape[0], 1))
+        return np.stack((_vec_fs, _vec_ss), axis=1) 
 
 class CorrectedData(object):
     def __init__(self, data, flatfield):
