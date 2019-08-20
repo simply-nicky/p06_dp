@@ -2,6 +2,7 @@ import os, numpy as np, h5py, concurrent.futures
 from . import utils
 from abc import ABCMeta, abstractmethod, abstractproperty
 from multiprocessing import cpu_count
+from scipy import constants
 from scipy.ndimage.filters import median_filter
 from skimage.transform import probabilistic_hough_line
 
@@ -110,9 +111,23 @@ class Frame(Measurement):
         datagroup.create_dataset('data', data=self.data(), compression='gzip')
         datagroup.create_dataset('mask', data=self.mask, compression='gzip')
 
-class Scan(Measurement, metaclass=ABCMeta):
+class ABCScan(Measurement, metaclass=ABCMeta):
     mode = 'scan'
 
+    @abstractmethod
+    def data_chunk(self, paths): pass
+
+    def data(self):
+        _paths = np.sort(np.array([os.path.join(self.datapath, filename) for filename in os.listdir(self.datapath) if not filename.endswith('master.h5')], dtype=object))
+        _thread_num = min(_paths.size, cpu_count())
+        _data_list = []
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            for _data_chunk in executor.map(self.data_chunk, np.array_split(_paths, _thread_num)):
+                if not _data_chunk is None:
+                    _data_list.append(_data_chunk)
+        return np.concatenate(_data_list, axis=0)
+
+class Scan(ABCScan, metaclass=ABCMeta):
     @abstractproperty
     def fast_size(self): pass
 
@@ -129,16 +144,6 @@ class Scan(Measurement, metaclass=ABCMeta):
                 try: data_list.append(datafile[utils.datapath][:].sum(axis=0, dtype=np.uint64))
                 except KeyError: continue
         return None if not data_list else np.stack(data_list, axis=0)
-
-    def data(self):
-        _paths = np.sort(np.array([os.path.join(self.datapath, filename) for filename in os.listdir(self.datapath) if not filename.endswith('master.h5')], dtype=object))
-        _thread_num = min(_paths.size, cpu_count())
-        _data_list = []
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            for _data_chunk in executor.map(self.data_chunk, np.array_split(_paths, _thread_num)):
-                if not _data_chunk is None:
-                    _data_list.append(_data_chunk)
-        return np.concatenate(_data_list, axis=0)
 
     def corrected_data(self, ffnum, data=None):
         if data is None: data = self.data()
@@ -272,13 +277,8 @@ class Scan2D(Scan):
         datagroup.create_dataset('fs_coordinates', data=self.fast_crds)
         datagroup.create_dataset('ss_coordinates', data=self.slow_crds)
 
-    def st(self, ffnum, data=None):
-        if data is None: data = self.data()
-        ffscan = Frame(self.prefix, ffnum, 'scan')
-        flatfield = ffscan.data()
-        return ST(self, data, flatfield)
-
-class ST(object):
+class ScanST(ABCScan):
+    prefix, scan_num = None, None
     pixel_vector = np.array([7.5e-5, 7.5e-5, 0])
     unit_vector_fs = np.array([0, -1, 0])
     unit_vector_ss = np.array([-1, 0, 0])
@@ -290,16 +290,50 @@ class ST(object):
     @property
     def y_pixel_size(self): return self.pixel_vector[1]
 
-    def __init__(self, scan, data, flatfield):
-        self.scan, self.data, self.flatfield = scan, data, flatfield
+    @property
+    def size(self): return self.slow_size * self.fast_size
+
+    @property
+    def wavelength(self): return constants.c * constants.h / self.energy
+
+    def __init__(self, prefix, scan_num, ff_num, good_frames=None):
+        self.prefix, self.scan_num, self.good_frames = prefix, scan_num, good_frames
+        self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
+        if self.good_frames is None: self.good_frames = np.arange(0, self.size)
+        self.flatfield = Frame(self.prefix, ff_num).data()
 
     def basis_vectors(self):
-        _vec_fs = np.tile(self.pixel_vector * self.unit_vector_fs, (self.data.shape[0], 1))
-        _vec_ss = np.tile(self.pixel_vector * self.unit_vector_ss, (self.data.shape[0], 1))
+        _vec_fs = np.tile(self.pixel_vector * self.unit_vector_fs, (self.size, 1))
+        _vec_ss = np.tile(self.pixel_vector * self.unit_vector_ss, (self.size, 1))
         return np.stack((_vec_fs, _vec_ss), axis=1)
 
+    def data_chunk(self, paths):
+        data_list = []
+        for path in paths:
+            with h5py.File(path, 'r') as datafile:
+                try: data_list.append(datafile[utils.datapath][:])
+                except KeyError: continue
+        return None if not data_list else np.stack(data_list, axis=0)
+
     def translation(self):
-        _x_pos = np.tile(self.scan.fast_crds * 1e-6, self.scan.slow_size)
-        _y_pos = np.repeat(self.scan.slow_crds * 1e-6, self.scan.fast_size)
-        _z_pos = np.zeros(self.scan.fast_size * self.scan.slow_size)
+        _x_pos = np.tile(self.fast_crds * 1e-6, self.slow_size)
+        _y_pos = np.repeat(self.slow_crds * 1e-6, self.fast_size)
+        _z_pos = np.zeros(self.size)
         return np.stack((_x_pos, _y_pos, _z_pos), axis=1)
+
+    def save(self, data=None):
+        if data is None: data = self.data()
+        outfile = self._create_outfile(tag='st')
+        detector_1 = outfile.create_group('instrument_1/detector_1')
+        detector_1.create_dataset('basis_vectors', data=self.basis_vectors())
+        detector_1.create_dataset('distance', data=self.detector_distance)
+        detector_1.create_dataset('x_pixel_size', data=self.x_pixel_size)
+        detector_1.create_dataset('y_pixel_size', data=self.y_pixel_size)
+        source_1 = outfile.create_group('instrument_1/source_1')
+        source_1.create_dataset('energy', data=self.energy)
+        source_1.create_dataset('wavelength', data=self.wavelength)
+        outfile.create_dataset('sample_3/geometry/translation', data=self.translation())
+        outfile.create_dataset('frame_selector/good_frames', data=self.good_frames)
+        outfile.create_dataset('mask_maker/mask', data=self.mask, compression='gzip')
+        outfile.create_dataset('make_whitefield/whitefield', data=self.flatfield, compression='gzip')
+        outfile.create_dataset('entry_1/data_1/data', data=data, compression='gzip')
