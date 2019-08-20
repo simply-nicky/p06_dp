@@ -19,7 +19,7 @@ class Measurement(metaclass=ABCMeta):
     def size(self): pass
 
     @abstractmethod
-    def data(self, paths): pass
+    def data(self): pass
 
     @abstractmethod
     def _save_data(self, outfile): pass
@@ -51,7 +51,14 @@ class Measurement(metaclass=ABCMeta):
         except: exposure = float(parts[-2])
         return exposure
     
+    @property
+    def mask(self): return utils.hotmask
+
     def filename(self, tag): return utils.filename[self.mode].format(tag, self.scan_num)
+
+    def masked_data(self, data=None):
+        if data is None: data = self.data()
+        return self.mask * data
 
     def _create_outfile(self, tag):
         self.outpath = os.path.join(os.path.dirname(__file__), utils.outpath[self.mode].format(self.scan_num))
@@ -101,6 +108,7 @@ class Frame(Measurement):
     def _save_data(self, outfile):
         datagroup = outfile.create_group('data')
         datagroup.create_dataset('data', data=self.data(), compression='gzip')
+        datagroup.create_dataset('mask', data=self.mask, compression='gzip')
 
 class Scan(Measurement, metaclass=ABCMeta):
     mode = 'scan'
@@ -118,7 +126,7 @@ class Scan(Measurement, metaclass=ABCMeta):
         data_list = []
         for path in paths:
             with h5py.File(path, 'r') as datafile:
-                try: data_list.append(np.multiply(utils.hotmask, datafile[utils.datapath][:].sum(axis=0, dtype=np.uint64)))
+                try: data_list.append(datafile[utils.datapath][:].sum(axis=0, dtype=np.uint64))
                 except KeyError: continue
         return None if not data_list else np.stack(data_list, axis=0)
 
@@ -133,21 +141,23 @@ class Scan(Measurement, metaclass=ABCMeta):
         return np.concatenate(_data_list, axis=0)
 
     def corrected_data(self, ffnum, data=None):
+        if data is None: data = self.data()
         ffscan = Frame(self.prefix, ffnum, 'scan')
-        flatfield = ffscan.data()
-        return CorrectedData(self.data() if data is None else data, flatfield)
+        flatfield = ffscan.masked_data()
+        return CorrectedData(self.masked_data(data), flatfield)
 
     def peaks(self, ffnum, data=None, good_frames=None):
         if data is None: data = self.data()
         if good_frames is None: good_frames = np.arange(0, data.shape[0])
         ffscan = Frame(self.prefix, ffnum, 'scan')
-        flatfield = ffscan.data()
-        return Peaks(data, flatfield, self.scan_num, good_frames)
+        flatfield = ffscan.masked_data()
+        return Peaks(self.masked_data(data), flatfield, self.scan_num, good_frames)
 
     def _save_data(self, outfile, data=None):
         if data is None: data = self.data()
         datagroup = outfile.create_group('data')
         datagroup.create_dataset('data', data=data, compression='gzip')
+        datagroup.create_dataset('mask', data=self.mask, compression='gzip')
         datagroup.create_dataset('fs_coordinates', data=self.fast_crds)
 
     def save_corrected(self, ffnum):
@@ -258,13 +268,14 @@ class Scan2D(Scan):
         data = self.data() if data is None else data
         datagroup = outfile.create_group('data')
         datagroup.create_dataset('data', data=data, compression='gzip')
+        datagroup.create_dataset('mask', data=self.mask, compression='gzip')
         datagroup.create_dataset('fs_coordinates', data=self.fast_crds)
         datagroup.create_dataset('ss_coordinates', data=self.slow_crds)
 
     def st(self, ffnum, data=None):
         if data is None: data = self.data()
         ffscan = Frame(self.prefix, ffnum, 'scan')
-        flatfield = ffscan.data
+        flatfield = ffscan.data()
         return ST(self, data, flatfield)
 
 class ST(object):
@@ -286,3 +297,9 @@ class ST(object):
         _vec_fs = np.tile(self.pixel_vector * self.unit_vector_fs, (self.data.shape[0], 1))
         _vec_ss = np.tile(self.pixel_vector * self.unit_vector_ss, (self.data.shape[0], 1))
         return np.stack((_vec_fs, _vec_ss), axis=1)
+
+    def translation(self):
+        _x_pos = np.tile(self.scan.fast_crds * 1e-6, self.scan.slow_size)
+        _y_pos = np.repeat(self.scan.slow_crds * 1e-6, self.scan.fast_size)
+        _z_pos = np.zeros(self.scan.fast_size * self.scan.slow_size)
+        return np.stack((_x_pos, _y_pos, _z_pos), axis=1)
