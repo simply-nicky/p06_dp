@@ -324,9 +324,9 @@ class ScanST(ABCScan):
     def _save_data(self, outfile, data=None):
         if data is None: data = self.data()
         outfile.create_dataset('frame_selector/good_frames', data=self.good_frames)
-        outfile.create_dataset('mask_maker/mask', data=self.mask, compression='gzip')
-        outfile.create_dataset('make_whitefield/whitefield', data=self.flatfield, compression='gzip')
-        outfile.create_dataset('entry_1/data_1/data', data=data, compression='gzip')
+        outfile.create_dataset('mask_maker/mask', data=self.mask)
+        outfile.create_dataset('make_whitefield/whitefield', data=self.flatfield)
+        outfile.create_dataset('entry_1/data_1/data', data=data)
 
     def save_st(self, data=None):
         outfile = self._create_outfile(tag='st', ext='cxi')
