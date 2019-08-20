@@ -321,8 +321,14 @@ class ScanST(ABCScan):
         _z_pos = np.zeros(self.size)
         return np.stack((_x_pos, _y_pos, _z_pos), axis=1)
 
-    def save(self, data=None):
+    def _save_data(self, outfile, data=None):
         if data is None: data = self.data()
+        outfile.create_dataset('frame_selector/good_frames', data=self.good_frames)
+        outfile.create_dataset('mask_maker/mask', data=self.mask, compression='gzip')
+        outfile.create_dataset('make_whitefield/whitefield', data=self.flatfield, compression='gzip')
+        outfile.create_dataset('entry_1/data_1/data', data=data, compression='gzip')
+
+    def save_st(self, data=None):
         outfile = self._create_outfile(tag='st')
         detector_1 = outfile.create_group('instrument_1/detector_1')
         detector_1.create_dataset('basis_vectors', data=self.basis_vectors())
@@ -333,7 +339,4 @@ class ScanST(ABCScan):
         source_1.create_dataset('energy', data=self.energy)
         source_1.create_dataset('wavelength', data=self.wavelength)
         outfile.create_dataset('sample_3/geometry/translation', data=self.translation())
-        outfile.create_dataset('frame_selector/good_frames', data=self.good_frames)
-        outfile.create_dataset('mask_maker/mask', data=self.mask, compression='gzip')
-        outfile.create_dataset('make_whitefield/whitefield', data=self.flatfield, compression='gzip')
-        outfile.create_dataset('entry_1/data_1/data', data=data, compression='gzip')
+        self._save_data(outfile, data)
