@@ -43,7 +43,7 @@ class Measurement(metaclass=ABCMeta):
 
     @property
     def energy(self):
-        return utils.energy(self.nxsfilepath)[0]
+        return utils.energy(self.nxsfilepath)[0] * constants.e
 
     @property
     def exposure(self):
@@ -296,13 +296,13 @@ class ScanST(ABCScan):
     def size(self): return self.slow_size * self.fast_size
 
     @property
-    def wavelength(self): return constants.c * constants.h / constants.e / self.energy
+    def wavelength(self): return constants.c * constants.h / self.energy
 
     def __init__(self, prefix, scan_num, ff_num, good_frames=None):
         self.prefix, self.scan_num, self.good_frames = prefix, scan_num, good_frames
         self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
         if self.good_frames is None: self.good_frames = np.arange(0, self.size)
-        self.flatfield = Frame(self.prefix, ff_num).masked_data()
+        self.flatfield = Frame(self.prefix, ff_num, 'scan').masked_data()
 
     def basis_vectors(self):
         _vec_fs = np.tile(self.pixel_vector * self.unit_vector_fs, (self.size, 1))
