@@ -61,10 +61,10 @@ class Measurement(metaclass=ABCMeta):
         if data is None: data = self.data()
         return self.mask * data
 
-    def _create_outfile(self, tag, ext='h5'):
+    def _create_outfile(self, tag, ext='h5', mode='w'):
         self.outpath = os.path.join(os.path.dirname(__file__), utils.outpath[self.mode].format(self.scan_num))
         utils.make_output_dir(self.outpath)
-        return h5py.File(os.path.join(self.outpath, self.filename(tag, ext)), 'w')
+        return h5py.File(os.path.join(self.outpath, self.filename(tag, ext)), mode)
     
     def _save_parameters(self, outfile):
         arggroup = outfile.create_group('arguments')
@@ -330,8 +330,8 @@ class ScanST(ABCScan):
         outfile.create_dataset('make_whitefield/whitefield', data=self.flatfield)
         outfile.create_dataset('entry_1/data_1/data', data=self.masked_data(data))
 
-    def save_st(self, data=None):
-        outfile = self._create_outfile(tag='st', ext='cxi')
+    def save_st(self, data=None, mode='w'):
+        outfile = self._create_outfile(tag='st', ext='cxi', mode=mode)
         detector_1 = outfile.create_group('entry_1/instrument_1/detector_1')
         detector_1.create_dataset('basis_vectors', data=self.basis_vectors())
         detector_1.create_dataset('distance', data=self.detector_distance)
