@@ -298,8 +298,8 @@ class ScanST(ABCScan):
     @property
     def wavelength(self): return constants.c * constants.h / self.energy
 
-    def __init__(self, prefix, scan_num, ff_num, good_frames=None):
-        self.prefix, self.scan_num, self.good_frames = prefix, scan_num, good_frames
+    def __init__(self, prefix, scan_num, ff_num, good_frames=None, flip_axes=False):
+        self.prefix, self.scan_num, self.good_frames, self.flip = prefix, scan_num, good_frames, flip_axes
         self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
         if self.good_frames is None: self.good_frames = np.arange(0, self.size)
         self.flatfield = Frame(self.prefix, ff_num, 'scan').masked_data()
@@ -307,7 +307,7 @@ class ScanST(ABCScan):
     def basis_vectors(self):
         _vec_fs = np.tile(self.pixel_vector * self.unit_vector_fs, (self.size, 1))
         _vec_ss = np.tile(self.pixel_vector * self.unit_vector_ss, (self.size, 1))
-        return np.stack((_vec_fs, _vec_ss), axis=1)
+        return np.stack((_vec_ss, _vec_fs), axis=1) if self.flip else np.stack((_vec_fs, _vec_ss), axis=1)
 
     def data_chunk(self, paths):
         data_list = []
