@@ -205,49 +205,53 @@ class Peaks(object):
         self.zero = utils.zero.get(scan_num, np.array(np.unravel_index(self.data.sum(axis=0).argmax(), self.flatfield.shape)))
         self.linelength = utils.linelens.get(scan_num, 20)
 
+    @property
     def subtracted_data(self):
         subdata = (self.data - self.flatfield[np.newaxis, :]).astype(np.int64)
         subdata[subdata < 0] = 0
         return subdata.astype(np.uint64)
 
-    def peaks(self, kernel_size=30, threshold=25, line_gap=5, drtau=30, drn=10):
-        _subdata = self.subtracted_data()
-        _background = utils.background(_subdata, self.mask, kernel_size)
-        _diffdata = utils.subtract_bgd(_subdata, _background)
-        _lineslist, _intslist = [], []
-        for _frame, _rawframe in zip(_diffdata, _subdata):
-            _lines, _ints = np.array([[[x0, y0], [x1, y1]] for (x0, y0), (x1, y1)
-                                    in probabilistic_hough_line(_frame, threshold=threshold, line_length=self.linelength, line_gap=line_gap)]), []
-            if _lines.any():
-                _lines = utils.findlines(_lines, self.zero, drtau, drn)
-                _ints = utils.peakintensity(_rawframe, _lines)
-            _lineslist.append(_lines); _intslist.append(_ints)
-        return _lineslist, _intslist
+    def background(self, kernel_size=30):
+        return utils.background(self.subtracted_data, self.mask, kernel_size)
+
+    def peaks(self, subdata, bgd, threshold=25, line_gap=5, drtau=30, drn=10):
+        diffdata = utils.subtract_bgd(subdata, bgd)
+        lineslist, intslist = [], []
+        for frame, rawframe in zip(diffdata, subdata):
+            lines, ints = np.array([[[x0, y0], [x1, y1]] for (x0, y0), (x1, y1)
+                                    in probabilistic_hough_line(frame, threshold=threshold, line_length=self.linelength, line_gap=line_gap)]), []
+            if lines.any():
+                lines = utils.findlines(lines, self.zero, drtau, drn)
+                ints = utils.peakintensity(rawframe, lines)
+            lineslist.append(lines); intslist.append(ints)
+        return lineslist, intslist
 
     def save(self, outfile, kernel_size=30, threshold=25, line_gap=5, drtau=30, drn=10):
-        _lineslist, _intslist = self.peaks(kernel_size, threshold, line_gap, drtau, drn)
-        _peakXPos = np.zeros((len(_lineslist), 1024), dtype=np.float32)
-        _peakYPos = np.zeros((len(_lineslist), 1024), dtype=np.float32)
-        _peakTotalIntensity = np.zeros((len(_lineslist), 1024), dtype=np.float32)
-        _nPeaks = np.zeros((len(_lineslist),), dtype=np.int32)
-        for idx, (lines, ints) in enumerate(zip(_lineslist, _intslist)):
+        subdata = self.subtracted_data
+        bgd = self.background(kernel_size)
+        lineslist, intslist = self.peaks(subdata, bgd, threshold, line_gap, drtau, drn)
+        peakXPos = np.zeros((len(lineslist), 1024), dtype=np.float32)
+        peakYPos = np.zeros((len(lineslist), 1024), dtype=np.float32)
+        peakTotalIntensity = np.zeros((len(lineslist), 1024), dtype=np.float32)
+        nPeaks = np.zeros((len(lineslist),), dtype=np.int32)
+        for idx, (lines, ints) in enumerate(zip(lineslist, intslist)):
             if lines.any():
-                _peakXPos[idx, :lines.shape[0]] = lines.mean(axis=1)[:, 0]
-                _peakYPos[idx, :lines.shape[0]] = lines.mean(axis=1)[:, 1]
-                _peakTotalIntensity[idx, :lines.shape[0]] = ints
-                _nPeaks[idx] = lines.shape[0]
+                peakXPos[idx, :lines.shape[0]] = lines.mean(axis=1)[:, 0]
+                peakYPos[idx, :lines.shape[0]] = lines.mean(axis=1)[:, 1]
+                peakTotalIntensity[idx, :lines.shape[0]] = ints
+                nPeaks[idx] = lines.shape[0]
         resgroup = outfile.create_group('entry_1/result_1')
-        resgroup.create_dataset('peakXPosRaw', data=_peakXPos)
-        resgroup.create_dataset('peakYPosRaw', data=_peakYPos)
-        resgroup.create_dataset('peakTotalIntensity', data=_peakTotalIntensity)
+        resgroup.create_dataset('peakXPosRaw', data=peakXPos)
+        resgroup.create_dataset('peakYPosRaw', data=peakYPos)
+        resgroup.create_dataset('peakTotalIntensity', data=peakTotalIntensity)
         datagroup = outfile.create_group('peaks_data')
-        datagroup.create_dataset('data', data=self.subtracted_data(), compression='gzip')
+        datagroup.create_dataset('data', data=subdata, compression='gzip')
         datagroup.create_dataset('mask', data=self.mask, compression='gzip')
-        datagroup.create_dataset('framesum', data=self.subtracted_data().sum(axis=0), compression='gzip')
+        datagroup.create_dataset('background', data=bgd, compression='gzip')
         datagroup.create_dataset('center_coordinate', data=self.zero)
         linesgroup = datagroup.create_group('bragg_lines')
         intsgroup = datagroup.create_group('bragg_intensities')
-        for idx, (lines, ints) in enumerate(zip(_lineslist, _intslist)):
+        for idx, (lines, ints) in enumerate(zip(lineslist, intslist)):
             linesgroup.create_dataset(str(idx), data=lines)
             intsgroup.create_dataset(str(idx), data=ints)
 
