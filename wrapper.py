@@ -115,13 +115,15 @@ class Frame(Measurement):
         datagroup.create_dataset('mask', data=self.mask, compression='gzip')
 
 class ABCScan(Measurement, metaclass=ABCMeta):
-    mode, __rawdata = 'scan', None
+    mode, __rawdata, __gf = 'scan', None, None
 
     @abstractmethod
     def data_chunk(self, paths): pass
 
     @property
-    def good_frames(self): return np.arange(0, self.rawdata.shape[0])
+    def good_frames(self):
+        if np.any(self.__gf): return self.__gf
+        else: return np.arange(0, self.rawdata.shape[0])
 
     @property
     def rawdata(self):
@@ -186,17 +188,15 @@ class Scan1D(Scan):
     prefix, scan_num, fast_size, fast_crds = None, None, None, None
 
     def __init__(self, prefix, scan_num, good_frames=None):
-        self.prefix, self.scan_num = prefix, scan_num
+        self.prefix, self.scan_num, self.__gf = prefix, scan_num, good_frames
         self.fast_crds, self.fast_size = utils.coordinates(self.command)
-        if np.any(good_frames): self.good_frames = good_frames
 
 class Scan2D(Scan):
     prefix, scan_num, fast_size, fast_crds = None, None, None, None
 
     def __init__(self, prefix, scan_num, good_frames=None):
-        self.prefix, self.scan_num = prefix, scan_num
+        self.prefix, self.scan_num, self.__gf = prefix, scan_num, good_frames
         self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
-        if np.any(good_frames): self.good_frames = good_frames
 
     @property
     def size(self): return (self.slow_size, self.fast_size)
