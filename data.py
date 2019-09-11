@@ -123,8 +123,8 @@ class FrameStreaks(object):
 
     @property
     def taus(self):
-        ts = (self.lines[:, 1] - self.lines[:, 0])
-        return ts / np.sqrt(ts[:,0]**2 + ts[:,1]**2)
+        taus = (self.lines[:, 1] - self.lines[:, 0])
+        return taus / np.sqrt(taus[:,0]**2 + taus[:,1]**2)[:, np.newaxis]
 
     def __iter__(self):
         for line in self.lines: yield line
