@@ -115,19 +115,19 @@ class Frame(Measurement):
         datagroup.create_dataset('mask', data=self.mask, compression='gzip')
 
 class ABCScan(Measurement, metaclass=ABCMeta):
-    mode, __rawdata, __gf = 'scan', None, None
+    mode, _rawdata, _good_frames = 'scan', None, None
 
     @abstractmethod
     def data_chunk(self, paths): pass
 
     @property
     def good_frames(self):
-        if np.any(self.__gf): return self.__gf
+        if np.any(self._good_frames): return self._good_frames
         else: return np.arange(0, self.rawdata.shape[0])
 
     @property
     def rawdata(self):
-        if np.any(self.__rawdata): return self.__rawdata
+        if np.any(self._rawdata): return self._rawdata
         else:
             _paths = np.sort(np.array([os.path.join(self.datapath, filename) for filename in os.listdir(self.datapath) if not filename.endswith('master.h5')], dtype=object))
             _thread_num = min(_paths.size, cpu_count())
@@ -135,7 +135,7 @@ class ABCScan(Measurement, metaclass=ABCMeta):
             with concurrent.futures.ProcessPoolExecutor() as executor:
                 for _data_chunk in executor.map(self.data_chunk, np.array_split(_paths, _thread_num)):
                     if np.any(_data_chunk): _data_list.append(_data_chunk)
-            self.__rawdata = np.concatenate(_data_list, axis=0)
+            self._rawdata = np.concatenate(_data_list, axis=0)
             return self.rawdata
 
 class Scan(ABCScan, metaclass=ABCMeta):
@@ -188,14 +188,14 @@ class Scan1D(Scan):
     prefix, scan_num, fast_size, fast_crds = None, None, None, None
 
     def __init__(self, prefix, scan_num, good_frames=None):
-        self.prefix, self.scan_num, self.__gf = prefix, scan_num, good_frames
+        self.prefix, self.scan_num, self._good_frames = prefix, scan_num, good_frames
         self.fast_crds, self.fast_size = utils.coordinates(self.command)
 
 class Scan2D(Scan):
     prefix, scan_num, fast_size, fast_crds = None, None, None, None
 
     def __init__(self, prefix, scan_num, good_frames=None):
-        self.prefix, self.scan_num, self.__gf = prefix, scan_num, good_frames
+        self.prefix, self.scan_num, self._good_frames = prefix, scan_num, good_frames
         self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
 
     @property
@@ -277,7 +277,7 @@ class CorrectedData(object):
     bgd_worker = partial(median_filter, size=(30, 1))
     bgd_filter = partial(median_filter, size=(1, 3, 3))
     feature_threshold = 10
-    __subdata, __bgd, __strksdata = None, None, None
+    _subdata, _bgd, _strksdata = None, None, None
 
     def __init__(self, data, flatfield, scan_num, good_frames):
         self.data, self.flatfield = data[good_frames], flatfield
@@ -285,15 +285,15 @@ class CorrectedData(object):
 
     @property
     def subdata(self):
-        if np.any(self.__subdata): return self.__subdata
+        if np.any(self._subdata): return self._subdata
         else:
-            self.__subdata = (self.data - self.flatfield[np.newaxis, :]).astype(np.int64)
-            self.__subdata[self.subdata < 0] = 0
+            self._subdata = (self.data - self.flatfield[np.newaxis, :]).astype(np.int64)
+            self._subdata[self.subdata < 0] = 0
             return self.subdata
 
     @property
     def background(self):
-        if np.any(self.__bgd): return self.__bgd
+        if np.any(self._bgd): return self._bgd
         else:
             idx = np.where(self.mask == 1)
             filtdata = self.subdata[:, idx[0], idx[1]]
@@ -301,18 +301,18 @@ class CorrectedData(object):
             with concurrent.futures.ProcessPoolExecutor() as executor:
                 for chunk in executor.map(self.bgd_worker, np.array_split(filtdata, cpu_count(), axis=1)):
                     datalist.append(chunk)
-            self.__bgd = np.copy(self.subdata)
-            self.__bgd[:, idx[0], idx[1]] = np.concatenate(datalist, axis=1)
+            self._bgd = np.copy(self.subdata)
+            self._bgd[:, idx[0], idx[1]] = np.concatenate(datalist, axis=1)
             return self.background
 
     @property
     def streaksdata(self):
-        if np.any(self.__strksdata): return self.__strksdata
+        if np.any(self._strksdata): return self._strksdata
         else:
             sub = (self.subdata - self.background).astype(np.int64)
-            self.__strksdata = np.where(sub - self.background > self.feature_threshold, self.subdata, 0)
+            self._strksdata = np.where(sub - self.background > self.feature_threshold, self.subdata, 0)
             with concurrent.futures.ProcessPoolExecutor() as executor:
-                self.__strksdata = np.concatenate([chunk for chunk in executor.map(self.bgd_filter, np.array_split(self.__strksdata, cpu_count()))])
+                self._strksdata = np.concatenate([chunk for chunk in executor.map(self.bgd_filter, np.array_split(self._strksdata, cpu_count()))])
             return self.streaksdata
 
     def save(self, outfile):

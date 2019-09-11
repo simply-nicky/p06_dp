@@ -1,7 +1,6 @@
 import numpy as np, numba as nb, concurrent.futures
 from . import utils
 from math import sqrt
-from functools import partial
 from itertools import accumulate
 from multiprocessing import cpu_count
 from skimage.transform import probabilistic_hough_line
@@ -12,17 +11,17 @@ from abc import ABCMeta, abstractmethod
 class LineDetector(object, metaclass=ABCMeta):
     @staticmethod
     @abstractmethod
-    def __refiner(lines, angles, rs, taus, drtau, drn): pass
+    def _refiner(lines, angles, rs, taus, drtau, drn): pass
     
     @abstractmethod
-    def __detector(self, frame): pass
+    def _detector(self, frame): pass
 
     def detectFrameRaw(self, frame):
-        return np.array([[[x0, y0], [x1, y1]] for (x0, y0), (x1, y1) in self.__detector(frame)])
+        return np.array([[[x0, y0], [x1, y1]] for (x0, y0), (x1, y1) in self._detector(frame)])
 
     def detectFrame(self, frame, zero, drtau, drn):
         lines = FrameStreaks(self.detectFrameRaw(frame), zero)
-        return self.__refiner(lines.lines, lines.angles, lines.radii, lines.taus, drtau, drn)
+        return self._refiner(lines.lines, lines.angles, lines.radii, lines.taus, drtau, drn)
 
     def detectScanRaw(self, data): return [self.detectFrameRaw(frame) for frame in data]
 
@@ -35,7 +34,7 @@ class HoughLineDetector(LineDetector):
 
     @staticmethod
     @nb.njit(nb.int64[:, :, :](nb.int64[:, :, :], nb.float64[:], nb.float64[:], nb.float64[:, :], nb.float64, nb.float64))
-    def __refiner(lines, angles, rs, taus, drtau, drn):
+    def _refiner(lines, angles, rs, taus, drtau, drn):
         newlines = np.empty(lines.shape, dtype=np.int64)
         idxs = []
         count = 0
@@ -60,8 +59,8 @@ class HoughLineDetector(LineDetector):
                 count += 1
         return newlines[:count]
 
-    def __detector(self, frame):
-        return partial(probabilistic_hough_line, threshold=self.trhd, line_length=self.ll, line_gap=self.lg, thetas=self.thetas)
+    def _detector(self, frame):
+        return probabilistic_hough_line(frame, threshold=self.trhd, line_length=self.ll, line_gap=self.lg, theta=self.thetas)
 
 class LineSegmentDetector(LineDetector):
     def __init__(self, scale=0.8, sigma_scale=0.6, log_eps=0):
@@ -69,7 +68,7 @@ class LineSegmentDetector(LineDetector):
     
     @staticmethod
     @nb.njit(nb.float32[:, :, :](nb.float32[:, :, :], nb.float64[:], nb.float64[:], nb.float64[:, :], nb.float64, nb.float64))
-    def __refiner(lines, angles, rs, taus, drtau, drn):
+    def _refiner(lines, angles, rs, taus, drtau, drn):
         lsdlines = np.empty(lines.shape, dtype=np.float32)
         idxs = []
         count = 0
@@ -96,7 +95,7 @@ class LineSegmentDetector(LineDetector):
                 count += 1
         return lsdlines[:count]
 
-    def __detector(self, frame):
+    def _detector(self, frame):
         cap = np.mean(frame[frame != 0]) + np.std(frame[frame != 0])
         img = utils.arraytoimg(np.clip(frame, 0, cap))
         return self.detector.detect(img)[0][:, 0].reshape((-1, 2, 2))
@@ -153,7 +152,7 @@ class ScanStreaks(object):
 
     @staticmethod
     @nb.njit(nb.float64[:,:](nb.float64[:,:],  nb.int64[:], nb.float64))
-    def __refiner(qs, shapes, dk):
+    def _refiner(qs, shapes, dk):
         b = len(shapes)
         out = np.empty(qs.shape, dtype=np.float64)
         idxs = []; jj = 0; count = 0
@@ -197,7 +196,7 @@ class ScanStreaks(object):
 
     def refined_qs(self, axis, thetas, pixsize, detdist, dk):
         qs = self.qs(axis, thetas, pixsize, detdist)
-        return ReciprocalPeaks(self.__refiner(qs, self.shapes, dk))
+        return ReciprocalPeaks(self._refiner(qs, self.shapes, dk))
 
     def save(self, data, outfile):
         linesgroup = outfile.create_group('bragg_lines')
