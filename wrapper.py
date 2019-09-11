@@ -122,7 +122,7 @@ class ABCScan(Measurement, metaclass=ABCMeta):
 
     @property
     def rawdata(self):
-        if self.__rawdata: return self.__rawdata
+        if np.any(self.__rawdata): return self.__rawdata
         else:
             _paths = np.sort(np.array([os.path.join(self.datapath, filename) for filename in os.listdir(self.datapath) if not filename.endswith('master.h5')], dtype=object))
             _thread_num = min(_paths.size, cpu_count())
@@ -280,7 +280,7 @@ class CorrectedData(object):
 
     @property
     def subdata(self):
-        if self.__subdata: return self.__subdata
+        if np.any(self.__subdata): return self.__subdata
         else:
             self.__subdata = (self.data - self.flatfield[np.newaxis, :]).astype(np.int64)
             self.__subdata[self.subdata < 0] = 0
@@ -288,7 +288,7 @@ class CorrectedData(object):
 
     @property
     def background(self):
-        if self.__bgd: return self.__bgd
+        if np.any(self.__bgd): return self.__bgd
         else:
             idx = np.where(self.mask == 1)
             filtdata = self.subdata[:, idx[0], idx[1]]
@@ -302,7 +302,7 @@ class CorrectedData(object):
 
     @property
     def streaksdata(self):
-        if self.__strksdata: return self.__strksdata
+        if np.any(self.__strksdata): return self.__strksdata
         else:
             sub = (self.subdata - self.background).astype(np.int64)
             self.__strksdata = np.where(sub - self.background > self.feature_threshold, self.subdata, 0)
