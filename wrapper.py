@@ -121,6 +121,9 @@ class ABCScan(Measurement, metaclass=ABCMeta):
     def data_chunk(self, paths): pass
 
     @property
+    def good_frames(self): return np.arange(0, self.rawdata.shape[0])
+
+    @property
     def rawdata(self):
         if np.any(self.__rawdata): return self.__rawdata
         else:
@@ -151,9 +154,9 @@ class Scan(ABCScan, metaclass=ABCMeta):
                 except KeyError: continue
         return None if not data_list else np.stack(data_list, axis=0)
 
-    def corrected_data(self, ffnum, good_frames=None):
+    def corrected_data(self, ffnum):
         flatfield = Frame(self.prefix, ffnum, 'scan').data
-        return CorrectedData(self.data, flatfield, self.scan_num, good_frames)
+        return CorrectedData(self.data, flatfield, self.scan_num, self.good_frames)
 
     def _save_data(self, outfile):
         datagroup = outfile.create_group('data')
@@ -165,15 +168,15 @@ class Scan(ABCScan, metaclass=ABCMeta):
         outfile = self._create_outfile(tag='corrected')
         self._save_parameters(outfile)
         self._save_data(outfile)
-        cordata = self.corrected_data(ffnum, self.data)
+        cordata = self.corrected_data(ffnum)
         cordata.save(outfile)
         outfile.close()
 
-    def save_streaks(self, ffnum, zero, drtau, drn, good_frames=None):
+    def save_streaks(self, ffnum, zero, drtau, drn):
         outfile = self._create_outfile(tag='corrected')
         self._save_parameters(outfile)
         self._save_data(outfile)
-        cordata = self.corrected_data(ffnum, self.data)
+        cordata = self.corrected_data(ffnum)
         cordata.save(outfile)
         outfile.close()
         streaks = LineSegmentDetector().detectScan(cordata.streaksdata, zero, drtau, drn)
@@ -182,16 +185,18 @@ class Scan(ABCScan, metaclass=ABCMeta):
 class Scan1D(Scan):
     prefix, scan_num, fast_size, fast_crds = None, None, None, None
 
-    def __init__(self, prefix, scan_num):
+    def __init__(self, prefix, scan_num, good_frames=None):
         self.prefix, self.scan_num = prefix, scan_num
         self.fast_crds, self.fast_size = utils.coordinates(self.command)
+        if np.any(good_frames): self.good_frames = good_frames
 
 class Scan2D(Scan):
     prefix, scan_num, fast_size, fast_crds = None, None, None, None
 
-    def __init__(self, prefix, scan_num):
+    def __init__(self, prefix, scan_num, good_frames=None):
         self.prefix, self.scan_num = prefix, scan_num
         self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
+        if np.any(good_frames): self.good_frames = good_frames
 
     @property
     def size(self): return (self.slow_size, self.fast_size)
