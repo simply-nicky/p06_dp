@@ -1,12 +1,15 @@
 import os, numpy as np, h5py, concurrent.futures
 from . import utils
+from .data import LineSegmentDetector
 from abc import ABCMeta, abstractmethod, abstractproperty
 from multiprocessing import cpu_count
-from scipy import constants
+from functools import partial
 from scipy.ndimage.filters import median_filter
-from skimage.transform import probabilistic_hough_line
+from scipy import constants
 
 class Measurement(metaclass=ABCMeta):
+    mask = utils.hotmask
+
     @abstractproperty
     def mode(self): pass
 
@@ -16,11 +19,11 @@ class Measurement(metaclass=ABCMeta):
     @abstractproperty
     def prefix(self): pass
 
-    @abstractmethod
-    def size(self): pass
+    @abstractproperty
+    def rawdata(self): pass
 
-    @abstractmethod
-    def data(self): pass
+    @abstractproperty
+    def size(self): pass
 
     @abstractmethod
     def _save_data(self, outfile): pass
@@ -53,13 +56,10 @@ class Measurement(metaclass=ABCMeta):
         return exposure
     
     @property
-    def mask(self): return utils.hotmask
+    def data(self):
+        return self.mask * self.rawdata
 
     def filename(self, tag, ext): return utils.filename[self.mode].format(tag, self.scan_num, ext)
-
-    def masked_data(self, data=None):
-        if data is None: data = self.data()
-        return self.mask * data
 
     def _create_outfile(self, tag, ext='h5'):
         self.outpath = os.path.join(os.path.dirname(__file__), utils.outpath[self.mode].format(self.scan_num))
@@ -93,39 +93,45 @@ def OpenScan(prefix, scan_num):
         raise ValueError('Unknown scan type')
 
 class Frame(Measurement):
-    prefix, scan_num, mode = None, None, None
-
-    def datafilename(self, framenum):
-        return utils.datafilename[self.mode].format(self.scan_num, framenum)
-
-    def size(self): return (1,)
+    prefix, scan_num, mode, framenum = None, None, None, 1
 
     def __init__(self, prefix, scan_num, mode='frame'):
         self.prefix, self.scan_num, self.mode = prefix, scan_num, mode
 
-    def data(self, framenum=1):
-        return h5py.File(os.path.join(self.datapath, self.datafilename(framenum)), 'r')[utils.datapath][:].sum(axis=0, dtype=np.uint64)
+    @property
+    def datafilename(self):
+        return utils.datafilename[self.mode].format(self.scan_num, self.framenum)
+
+    @property
+    def rawdata(self):
+        return h5py.File(os.path.join(self.datapath, self.datafilename), 'r')[utils.datapath][:].sum(axis=0, dtype=np.uint64)
+
+    @property
+    def size(self): return (1,)
 
     def _save_data(self, outfile):
         datagroup = outfile.create_group('data')
-        datagroup.create_dataset('data', data=self.data(), compression='gzip')
+        datagroup.create_dataset('data', data=self.data, compression='gzip')
         datagroup.create_dataset('mask', data=self.mask, compression='gzip')
 
 class ABCScan(Measurement, metaclass=ABCMeta):
-    mode = 'scan'
+    mode, __rawdata = 'scan', None
 
     @abstractmethod
     def data_chunk(self, paths): pass
 
-    def data(self):
-        _paths = np.sort(np.array([os.path.join(self.datapath, filename) for filename in os.listdir(self.datapath) if not filename.endswith('master.h5')], dtype=object))
-        _thread_num = min(_paths.size, cpu_count())
-        _data_list = []
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            for _data_chunk in executor.map(self.data_chunk, np.array_split(_paths, _thread_num)):
-                if not _data_chunk is None:
-                    _data_list.append(_data_chunk)
-        return np.concatenate(_data_list, axis=0)
+    @property
+    def rawdata(self):
+        if self.__rawdata: return self.__rawdata
+        else:
+            _paths = np.sort(np.array([os.path.join(self.datapath, filename) for filename in os.listdir(self.datapath) if not filename.endswith('master.h5')], dtype=object))
+            _thread_num = min(_paths.size, cpu_count())
+            _data_list = []
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                for _data_chunk in executor.map(self.data_chunk, np.array_split(_paths, _thread_num)):
+                    if np.any(_data_chunk): _data_list.append(_data_chunk)
+            self.__rawdata = np.concatenate(_data_list, axis=0)
+            return self.rawdata
 
 class Scan(ABCScan, metaclass=ABCMeta):
     @abstractproperty
@@ -145,116 +151,33 @@ class Scan(ABCScan, metaclass=ABCMeta):
                 except KeyError: continue
         return None if not data_list else np.stack(data_list, axis=0)
 
-    def corrected_data(self, ffnum, data=None):
-        if data is None: data = self.data()
-        ffscan = Frame(self.prefix, ffnum, 'scan')
-        flatfield = ffscan.masked_data()
-        return CorrectedData(self.masked_data(data), flatfield)
+    def corrected_data(self, ffnum, good_frames=None):
+        flatfield = Frame(self.prefix, ffnum, 'scan').data
+        return CorrectedData(self.data, flatfield, self.scan_num, good_frames)
 
-    def peaks(self, ffnum, data=None, good_frames=None):
-        if data is None: data = self.data()
-        if good_frames is None: good_frames = np.arange(0, data.shape[0])
-        ffscan = Frame(self.prefix, ffnum, 'scan')
-        flatfield = ffscan.masked_data()
-        return Peaks(self.masked_data(data), flatfield, self.scan_num, good_frames)
-
-    def _save_data(self, outfile, data=None):
-        if data is None: data = self.data()
+    def _save_data(self, outfile):
         datagroup = outfile.create_group('data')
-        datagroup.create_dataset('data', data=data, compression='gzip')
+        datagroup.create_dataset('data', data=self.rawdata, compression='gzip')
         datagroup.create_dataset('mask', data=self.mask, compression='gzip')
         datagroup.create_dataset('fs_coordinates', data=self.fast_crds)
 
     def save_corrected(self, ffnum):
         outfile = self._create_outfile(tag='corrected')
         self._save_parameters(outfile)
-        data = self.data()
-        self._save_data(outfile, data)
-        cordata = self.corrected_data(ffnum, data)
+        self._save_data(outfile)
+        cordata = self.corrected_data(ffnum, self.data)
         cordata.save(outfile)
         outfile.close()
 
-    def save_peaks(self, ffnum, good_frames=None):
-        outfile = self._create_outfile(tag='peaks')
+    def save_streaks(self, ffnum, zero, drtau, drn, good_frames=None):
+        outfile = self._create_outfile(tag='corrected')
         self._save_parameters(outfile)
-        data = self.data()
-        self._save_data(outfile, data)
-        peaks = self.peaks(ffnum, data, good_frames)
-        peaks.save(outfile)
+        self._save_data(outfile)
+        cordata = self.corrected_data(ffnum, self.data)
+        cordata.save(outfile)
         outfile.close()
-
-class CorrectedData(object):
-    def __init__(self, data, flatfield):
-        self.data, self.flatfield = data, flatfield
-
-    @property
-    def corrected_data(self):
-        cordata = (self.data - self.flatfield[np.newaxis, :]).astype(np.int64)
-        cordata[cordata < 0] = 0
-        return cordata.astype(np.uint64)
-
-    def save(self, outfile):
-        correct_group = outfile.create_group('corrected_data')
-        correct_group.create_dataset('flatfield', data=self.flatfield, compression='gzip')
-        correct_group.create_dataset('corrected_data', data=self.corrected_data, compression='gzip')
-
-class Peaks(object):
-    def __init__(self, data, flatfield, scan_num, good_frames):
-        self.data, self.flatfield = data[good_frames], flatfield
-        self.mask = utils.mask.get(scan_num, np.ones(self.flatfield.shape))
-        self.zero = utils.zero.get(scan_num, np.array(np.unravel_index(self.data.sum(axis=0).argmax(), self.flatfield.shape)))
-        self.linelength = utils.linelens.get(scan_num, 20)
-
-    @property
-    def subtracted_data(self):
-        subdata = (self.data - self.flatfield[np.newaxis, :]).astype(np.int64)
-        subdata[subdata < 0] = 0
-        return subdata.astype(np.uint64)
-
-    def background(self, kernel_size=30):
-        return utils.background(self.subtracted_data, self.mask, kernel_size)
-
-    def peaks(self, subdata, bgd, threshold=25, line_gap=5, drtau=30, drn=10):
-        diffdata = utils.subtract_bgd(subdata, bgd)
-        lineslist, intslist = [], []
-        for frame, rawframe in zip(diffdata, subdata):
-            lines, ints = np.array([[[x0, y0], [x1, y1]] for (x0, y0), (x1, y1)
-                                    in probabilistic_hough_line(frame, threshold=threshold, line_length=self.linelength, line_gap=line_gap)]), []
-            if lines.any():
-                lines = utils.findlines(lines, self.zero, drtau, drn)
-                ints = utils.peakintensity(rawframe, lines)
-            lineslist.append(lines); intslist.append(ints)
-        return lineslist, intslist
-
-    def save(self, outfile, kernel_size=30, threshold=25, line_gap=5, drtau=30, drn=10):
-        subdata = self.subtracted_data
-        bgd = self.background(kernel_size)
-        lineslist, intslist = self.peaks(subdata, bgd, threshold, line_gap, drtau, drn)
-        peakXPos = np.zeros((len(lineslist), 1024), dtype=np.float32)
-        peakYPos = np.zeros((len(lineslist), 1024), dtype=np.float32)
-        peakTotalIntensity = np.zeros((len(lineslist), 1024), dtype=np.float32)
-        nPeaks = np.zeros((len(lineslist),), dtype=np.int32)
-        for idx, (lines, ints) in enumerate(zip(lineslist, intslist)):
-            if lines.any():
-                peakXPos[idx, :lines.shape[0]] = lines.mean(axis=1)[:, 0]
-                peakYPos[idx, :lines.shape[0]] = lines.mean(axis=1)[:, 1]
-                peakTotalIntensity[idx, :lines.shape[0]] = ints
-                nPeaks[idx] = lines.shape[0]
-        resgroup = outfile.create_group('entry_1/result_1')
-        resgroup.create_dataset('peakXPosRaw', data=peakXPos)
-        resgroup.create_dataset('peakYPosRaw', data=peakYPos)
-        resgroup.create_dataset('peakTotalIntensity', data=peakTotalIntensity)
-        datagroup = outfile.create_group('peaks_data')
-        datagroup.create_dataset('data', data=subdata, compression='gzip')
-        datagroup.create_dataset('mask', data=self.mask, compression='gzip')
-        datagroup.create_dataset('background', data=bgd, compression='gzip')
-        datagroup.create_dataset('center_coordinate', data=self.zero)
-        linesgroup = datagroup.create_group('bragg_lines')
-        intsgroup = datagroup.create_group('bragg_intensities')
-        for idx, (lines, ints) in enumerate(zip(lineslist, intslist)):
-            linesgroup.create_dataset(str(idx), data=lines)
-            intsgroup.create_dataset(str(idx), data=ints)
-
+        streaks = LineSegmentDetector().detectScan(cordata.streaksdata, zero, drtau, drn)
+        streaks.save(self.rawdata, outfile)
 
 class Scan1D(Scan):
     prefix, scan_num, fast_size, fast_crds = None, None, None, None
@@ -273,10 +196,9 @@ class Scan2D(Scan):
     @property
     def size(self): return (self.slow_size, self.fast_size)
 
-    def _save_data(self, outfile, data=None):
-        data = self.data() if data is None else data
+    def _save_data(self, outfile):
         datagroup = outfile.create_group('data')
-        datagroup.create_dataset('data', data=data, compression='gzip')
+        datagroup.create_dataset('data', data=self.rawdata, compression='gzip')
         datagroup.create_dataset('mask', data=self.mask, compression='gzip')
         datagroup.create_dataset('fs_coordinates', data=self.fast_crds)
         datagroup.create_dataset('ss_coordinates', data=self.slow_crds)
@@ -306,7 +228,7 @@ class ScanST(ABCScan):
         self.prefix, self.scan_num, self.good_frames, self.flip = prefix, scan_num, good_frames, flip_axes
         self.fast_crds, self.fast_size, self.slow_crds, self.slow_size = utils.coordinates2d(self.command)
         if self.good_frames is None: self.good_frames = np.arange(0, self.size)
-        self.flatfield = Frame(self.prefix, ff_num, 'scan').masked_data()
+        self.flatfield = Frame(self.prefix, ff_num, 'scan').data
 
     def basis_vectors(self):
         _vec_fs = np.tile(self.pixel_vector * self.unit_vector_fs, (self.size, 1))
@@ -327,14 +249,13 @@ class ScanST(ABCScan):
         _z_pos = np.zeros(self.size)
         return np.stack((_x_pos, _y_pos, _z_pos), axis=1)
 
-    def _save_data(self, outfile, data=None):
-        if data is None: data = self.data()
+    def _save_data(self, outfile):
         outfile.create_dataset('frame_selector/good_frames', data=self.good_frames)
         outfile.create_dataset('mask_maker/mask', data=self.mask)
         outfile.create_dataset('make_whitefield/whitefield', data=self.flatfield)
-        outfile.create_dataset('entry_1/data_1/data', data=self.masked_data(data))
+        outfile.create_dataset('entry_1/data_1/data', data=self.data)
 
-    def save_st(self, data=None):
+    def save_st(self):
         outfile = self._create_outfile(tag='st', ext='cxi')
         detector_1 = outfile.create_group('entry_1/instrument_1/detector_1')
         detector_1.create_dataset('basis_vectors', data=self.basis_vectors())
@@ -345,4 +266,53 @@ class ScanST(ABCScan):
         source_1.create_dataset('energy', data=self.energy)
         source_1.create_dataset('wavelength', data=self.wavelength)
         outfile.create_dataset('entry_1/sample_3/geometry/translation', data=self.translation())
-        self._save_data(outfile, data)
+        self._save_data(outfile)
+
+class CorrectedData(object):
+    bgd_worker = partial(median_filter, size=(30, 1))
+    bgd_filter = partial(median_filter, size=(1, 3, 3))
+    feature_threshold = 10
+    __subdata, __bgd, __strksdata = None, None, None
+
+    def __init__(self, data, flatfield, scan_num, good_frames):
+        self.data, self.flatfield = data[good_frames], flatfield
+        self.mask = utils.mask.get(scan_num, np.ones(self.flatfield.shape))
+
+    @property
+    def subdata(self):
+        if self.__subdata: return self.__subdata
+        else:
+            self.__subdata = (self.data - self.flatfield[np.newaxis, :]).astype(np.int64)
+            self.__subdata[self.subdata < 0] = 0
+            return self.subdata
+
+    @property
+    def background(self):
+        if self.__bgd: return self.__bgd
+        else:
+            idx = np.where(self.mask == 1)
+            filtdata = self.subdata[:, idx[0], idx[1]]
+            datalist = []
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                for chunk in executor.map(self.bgd_worker, np.array_split(filtdata, cpu_count(), axis=1)):
+                    datalist.append(chunk)
+            self.__bgd = np.copy(self.subdata)
+            self.__bgd[:, idx[0], idx[1]] = np.concatenate(datalist, axis=1)
+            return self.background
+
+    @property
+    def streaksdata(self):
+        if self.__strksdata: return self.__strksdata
+        else:
+            sub = (self.subdata - self.background).astype(np.int64)
+            self.__strksdata = np.where(sub - self.background > self.feature_threshold, self.subdata, 0)
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                self.__strksdata = np.concatenate([chunk for chunk in executor.map(self.bgd_filter, np.array_split(self.__strksdata, cpu_count()))])
+            return self.streaksdata
+
+    def save(self, outfile):
+        correct_group = outfile.create_group('corrected_data')
+        correct_group.create_dataset('flatfield', data=self.flatfield, compression='gzip')
+        correct_group.create_dataset('corrected_data', data=self.subdata, compression='gzip')
+        correct_group.create_dataset('background', data=self.background, compression='gzip')
+        correct_group.create_dataset('streaks_data', data=self.streaksdata, compression='gzip')

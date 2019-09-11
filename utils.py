@@ -1,9 +1,6 @@
-import numpy as np, h5py, os, errno,  pyqtgraph as pg, sys, numba as nb, concurrent.futures
-from math import sqrt, atan2, pi
-from functools import partial
-from multiprocessing import cpu_count
-from scipy.ndimage.filters import median_filter
-from skimage.draw import line_aa
+import numpy as np, numba as nb, h5py, os, errno
+from cv2 import cvtColor, COLOR_BGR2GRAY
+from math import sqrt , cos, sin
 
 raw_path = "/asap3/petra3/gpfs/p06/2019/data/11006252/raw"
 prefixes = {'alignment': '0001_alignment', 'opal': '0001_opal', 'b12_1': '0002_b12_1', 'b12_2': '0002_b12_2', 'imaging': '0003_imaging1'}
@@ -56,64 +53,28 @@ def coordinates2d(command):
     slow_crds = np.linspace(nums[0], nums[1], int(nums[2]) + 1, endpoint=True)
     return fast_crds, fast_crds.size, slow_crds, slow_crds.size
 
-def background(data, mask, kernel_size=30):
-    idx = np.where(mask == 1)
-    filtdata = data[:, idx[0], idx[1]]
-    bgdworker, datalist = partial(median_filter, size=(kernel_size, 1)), []
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        for chunk in executor.map(bgdworker, np.array_split(filtdata, cpu_count(), axis=1)):
-            datalist.append(chunk)
-    resdata = np.copy(data)
-    resdata[:, idx[0], idx[1]] = np.concatenate(datalist, axis=1)
-    return resdata
+def arraytoimg(array):
+    img = np.tile((array / array.max() * 255).astype(np.uint8)[..., np.newaxis], (1, 1, 3))
+    return cvtColor(img, COLOR_BGR2GRAY)
 
-def subtract_bgd(data, bgd):
-    filt = partial(median_filter, size=(1, 3, 3))
-    sub = (data - bgd).astype(np.int32)
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        res = np.where(sub - bgd > 10, data, 0)
-        res = np.concatenate([chunk for chunk in executor.map(filt, np.array_split(res, cpu_count()))])
-    return res
+def rotation_matrix(axis, theta):
+    axis = np.asarray(axis)
+    axis = axis / sqrt(np.dot(axis, axis))
+    a = cos(theta / 2.0)
+    b, c, d = -axis * sin(theta / 2.0)
+    aa, bb, cc, dd = a * a, b * b, c * c, d * d
+    bc, ad, ac, ab, bd, cd = b * c, a * d, a * c, a * b, b * d, c * d
+    return np.array([[aa + bb - cc - dd, 2 * (bc + ad), 2 * (bd - ac)],
+                     [2 * (bc - ad), aa + cc - bb - dd, 2 * (cd + ab)],
+                     [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc]])
 
-@nb.njit(nb.int64[:, :, :](nb.int64[:, :, :], nb.int64[:], nb.float64, nb.float64), fastmath=True)
-def findlines(lines, zero, drtau, drn):
-    newlines = np.empty(lines.shape, dtype=np.int64)
-    angles = np.empty((lines.shape[0],), dtype=np.float64)
-    rs = np.empty((lines.shape[0],), dtype=np.float64)
-    taus = np.empty((lines.shape[0], 2), dtype=np.float64)
-    for idx in range(lines.shape[0]):
-        x = (lines[idx, 0, 0] + lines[idx, 1, 0]) / 2 - zero[0]
-        y = (lines[idx, 0, 1] + lines[idx, 1, 1]) / 2 - zero[1]
-        tau = (lines[idx, 1] - lines[idx, 0]).astype(np.float64)
-        taus[idx] = tau / sqrt(tau[0]**2 + tau[1]**2)
-        angles[idx] = atan2(y, x)
-        rs[idx] = sqrt(x**2 + y**2)
-    idxs = []
-    count = 0
-    for idx in range(lines.shape[0]):
-        if idx not in idxs:
-            newline = np.empty((2, 2), dtype=np.float64)
-            proj0 = lines[idx, 0, 0] * taus[idx, 0] + lines[idx, 0, 1] * taus[idx, 1]
-            proj1 = lines[idx, 1, 0] * taus[idx, 0] + lines[idx, 1, 1] * taus[idx, 1]
-            if proj0 < proj1: newline[0] = lines[idx, 0]; newline[1] = lines[idx, 1]
-            else: newline[0] = lines[idx, 1]; newline[1] = lines[idx, 0]
-            for idx2 in range(lines.shape[0]):
-                if idx == idx2: continue
-                elif abs((angles[idx] - angles[idx2]) * rs[idx]) < drtau and abs(rs[idx] - rs[idx2]) < drn:
-                    idxs.append(idx2)
-                    proj20 = lines[idx2, 0, 0] * taus[idx, 0] + lines[idx2, 0, 1] * taus[idx, 1]
-                    proj21 = lines[idx2, 1, 0] * taus[idx, 0] + lines[idx2, 1, 1] * taus[idx, 1]
-                    if proj20 < proj0: newline[0] = lines[idx2, 0]
-                    elif proj20 > proj1: newline[1] = lines[idx2, 0]
-                    if proj21 < proj0: newline[0] = lines[idx2, 1]
-                    elif proj21 > proj1: newline[1] = lines[idx2, 1]           
-            newlines[count] = newline
-            count += 1
-    return newlines[:count]
-
-def peakintensity(frame, lines):
-    ints = []
-    for line in lines:
-        rr, cc, val = line_aa(line[0, 1], line[0, 0], line[1, 1], line[1, 0])
-        ints.append((frame[rr, cc] * val).sum())
-    return np.array(ints)
+@nb.njit(nb.types.UniTuple(nb.float64[:], 3)(nb.float64[:, :], nb.float64[:], nb.float64[:], nb.float64[:]), fastmath=True)
+def rotate(m, xs, ys, zs):
+    XS = np.empty(xs.shape, dtype=np.float64)
+    YS = np.empty(xs.shape, dtype=np.float64)
+    ZS = np.empty(xs.shape, dtype=np.float64)
+    for i in range(xs.size):
+            XS[i] = m[0,0] * xs[i] + m[0,1] * ys[i] + m[0,2] * zs[i]
+            YS[i] = m[1,0] * xs[i] + m[1,1] * ys[i] + m[1,2] * zs[i]
+            ZS[i] = m[2,0] * xs[i] + m[2,1] * ys[i] + m[2,2] * zs[i]
+    return XS, YS, ZS
