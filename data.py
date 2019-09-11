@@ -67,14 +67,14 @@ class LineSegmentDetector(LineDetector):
         self.detector = createLineSegmentDetector(_scale=scale, _sigma_scale=sigma_scale, _log_eps=log_eps)
     
     @staticmethod
-    @nb.njit(nb.float32[:, :, :](nb.float32[:, :, :], nb.float64[:], nb.float64[:], nb.float64[:, :], nb.float64, nb.float64))
+    @nb.njit(nb.float64[:, :, :](nb.float64[:, :, :], nb.float64[:], nb.float64[:], nb.float64[:, :], nb.float64, nb.float64))
     def _refiner(lines, angles, rs, taus, drtau, drn):
-        lsdlines = np.empty(lines.shape, dtype=np.float32)
+        lsdlines = np.empty(lines.shape, dtype=np.float64)
         idxs = []
         count = 0
         for idx in range(lines.shape[0]):
             if idx not in idxs:
-                newline = np.empty((2, 2), dtype=np.float32)
+                newline = np.empty((2, 2), dtype=np.float64)
                 proj0 = lines[idx, 0, 0] * taus[idx, 0] + lines[idx, 0, 1] * taus[idx, 1]
                 proj1 = lines[idx, 1, 0] * taus[idx, 0] + lines[idx, 1, 1] * taus[idx, 1]
                 if proj0 < proj1: newline[0] = lines[idx, 0]; newline[1] = lines[idx, 1]
@@ -98,7 +98,7 @@ class LineSegmentDetector(LineDetector):
     def _detector(self, frame):
         cap = np.mean(frame[frame != 0]) + np.std(frame[frame != 0])
         img = utils.arraytoimg(np.clip(frame, 0, cap))
-        return self.detector.detect(img)[0][:, 0].reshape((-1, 2, 2))
+        return self.detector.detect(img)[0][:, 0].reshape((-1, 2, 2)).astype(np.float64)
 
 class FrameStreaks(object):
     def __init__(self, lines, zero):
