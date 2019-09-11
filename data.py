@@ -211,7 +211,7 @@ class ReciprocalPeaks(object):
 
     @staticmethod
     @nb.njit(nb.uint64[:, :, :](nb.float64[:,:], nb.float64, nb.int64), parallel=True)
-    def __corgrid_func(qs, qmax, size):
+    def _corgrid_func(qs, qmax, size):
         a = qs.shape[0]
         corgrid = np.zeros((size, size, size), dtype=np.uint64)
         ks = np.linspace(-qmax, qmax, size)
@@ -227,7 +227,7 @@ class ReciprocalPeaks(object):
 
     @staticmethod
     @nb.njit(nb.float64[:, :](nb.float64[:,:], nb.float64), parallel=True)
-    def __cor_func(qs, qmax):
+    def _cor_func(qs, qmax):
         a = qs.shape[0]
         cor = np.empty((int(a * (a - 1) / 2), 3), dtype=np.float64)
         count = 0
@@ -240,7 +240,7 @@ class ReciprocalPeaks(object):
         return cor[:count]
 
     def correlation_grid(self, qmax, size):
-        return self.__corgrid_func(self.qs, qmax, size)
+        return self._corgrid_func(self.qs, qmax, size)
 
     def correlation(self, qmax):
-        return self.__cor_func(self.qs, qmax)
+        return self._cor_func(self.qs, qmax)

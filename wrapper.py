@@ -180,9 +180,9 @@ class Scan(ABCScan, metaclass=ABCMeta):
         self._save_data(outfile)
         cordata = self.corrected_data(ffnum)
         cordata.save(outfile)
-        outfile.close()
         streaks = LineSegmentDetector().detectScan(cordata.streaksdata, zero, drtau, drn)
         streaks.save(self.rawdata, outfile)
+        outfile.close()
 
 class Scan1D(Scan):
     prefix, scan_num, fast_size, fast_crds = None, None, None, None
