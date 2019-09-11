@@ -82,13 +82,13 @@ class Measurement(metaclass=ABCMeta):
         self._save_data(outfile)
         outfile.close()
 
-def OpenScan(prefix, scan_num):
+def OpenScan(prefix, scan_num, good_frames=None):
     path = os.path.join(os.path.join(utils.raw_path, utils.prefixes[prefix], utils.measpath['scan'].format(scan_num)))
     command = utils.scan_command(path + '.nxs')
     if command.startswith(utils.commands['scan1d']):
-        return Scan1D(prefix, scan_num)
+        return Scan1D(prefix, scan_num, good_frames)
     elif command.startswith(utils.commands['scan2d']):
-        return Scan2D(prefix, scan_num)
+        return Scan2D(prefix, scan_num, good_frames)
     else:
         raise ValueError('Unknown scan type')
 
