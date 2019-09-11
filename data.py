@@ -21,7 +21,7 @@ class LineDetector(object, metaclass=ABCMeta):
 
     def detectFrame(self, frame, zero, drtau, drn):
         lines = FrameStreaks(self.detectFrameRaw(frame), zero)
-        return self._refiner(lines.lines, lines.angles, lines.radii, lines.taus, drtau, drn)
+        return FrameStreaks(self._refiner(lines.lines, lines.angles, lines.radii, lines.taus, drtau, drn), zero)
 
     def detectScanRaw(self, data): return [self.detectFrameRaw(frame) for frame in data]
 
